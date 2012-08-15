@@ -9,7 +9,7 @@
     <dependencies>
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
-            <artifactId>jetty-servlet</artifactId>
+            <artifactId>jetty-webapp</artifactId>
             <version>8.1.5.v20120716</version>
         </dependency>
 		<dependency>
@@ -22,6 +22,23 @@
             <artifactId>scala-library</artifactId>
             <version>2.10.0-M2</version>
         </dependency>
+        <dependency>
+            <groupId>org.codehaus.jackson</groupId>
+            <artifactId>jackson-mapper-lgpl</artifactId>
+            <version>1.9.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.sun.jersey</groupId>
+            <artifactId>jersey-servlet</artifactId>
+            <version>1.12</version>
+        </dependency>
+        <dependency>
+            <groupId>com.sun.jersey</groupId>
+            <artifactId>jersey-json</artifactId>
+            <version>1.12</version>
+        </dependency>
+
     </dependencies>
     <build>
         <plugins>
