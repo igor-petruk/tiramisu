@@ -12,6 +12,11 @@
             <artifactId>jetty-webapp</artifactId>
             <version>8.1.5.v20120716</version>
         </dependency>
+        <dependency>
+            <groupId>org.eclipse.jetty</groupId>
+            <artifactId>jetty-jsp</artifactId>
+            <version>8.1.5.v20120716</version>
+        </dependency>
 		<dependency>
 			<groupId>javax.servlet</groupId>
 			<artifactId>servlet-api</artifactId>
