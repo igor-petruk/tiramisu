@@ -1,12 +1,33 @@
 package org.tiramisu.app
 
 import org.tiramisu._
+import akka.actor.{Props, Actor, ActorSystem}
+import akka.pattern.ask
+import scala.concurrent.util.duration._
+import akka.util.Timeout
+import concurrent.ExecutionContext
+import ExecutionContext.Implicits.global
 
 case class Book(name:String)
 
 // Non intrusive controllers
-trait IndexController{self:Controller=>
-  route /"index" -> View("index.jsp")
+trait IndexController{
+  self:Controller with ProcessingService=>
+
+  route /"index" -> view("index.jsp")
+
+  route /"akka" -> {
+    val request = async
+    implicit val timeout = Timeout(5 seconds)
+    (waitActor ? "Hello")
+      .onComplete{ reply=>
+          reply match {
+            case Left(error) => view("results.jsp",Map("error"->error))
+            case Right(response)=> view("results.jsp",Map("response"->response))
+          }
+          request.complete
+      }
+  }
 }
 
 // May contain dependencies
@@ -22,10 +43,25 @@ trait BookController{
 
   // And then used
   routeBooks /"view" -> { (storeName, book)=>   // These params are type-safe, inferred from route
-    View("book.jsp", Map("storeName"->storeName,"book"->book))
+    view("book.jsp", Map("storeName"->storeName,"book"->book))
   }
 
-  routeBooks /"json" -> { (_, book)=> Json(book) }
+  routeBooks /"json" -> { (_, book)=> json(book) }
+}
+
+trait ProcessingService{
+  val actorSystem = ActorSystem("bookApp")
+
+  val waitActor = actorSystem.actorOf(Props(new WaitActor))
+
+  class WaitActor extends Actor{
+    def receive = {
+      case x => {
+        Thread.sleep(1000)
+        sender ! x
+      }
+    }
+  }
 }
 
 trait BookRepository{
@@ -36,5 +72,6 @@ trait BookRepository{
 
 class BookApplication extends Tiramisu
   with BookRepository
+  with ProcessingService
   with IndexController
   with BookController

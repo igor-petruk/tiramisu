@@ -7,7 +7,7 @@ import javax.servlet.http._
 sealed class PathItem
 case class StringPathItem(string:String) extends PathItem
 case class TypedPathItem[T:ClassTag](optioned:Class[_]=null) extends PathItem{
-  override def toString = "%s(%s)".format(this.getClass.getSimpleName,classTag[T].erasure+"/"+optioned)
+  override def toString = "%s(%s)".format(this.getClass.getSimpleName,implicitly[ClassTag[T]].runtimeClass+"/"+optioned)
 }
 case object StartItem extends PathItem
 
@@ -37,7 +37,7 @@ class Route0(prev:Route=null, i:PathItem = StartItem) extends Route{
 class Route1[T1:ClassTag](prev:Route, i:PathItem) extends Route{
   def previous = prev
   def item = i
-  def /(v:String) = new Route1(this, StringPathItem(v))
+  def /(v:String) = new Route1[T1](this, StringPathItem(v))
   def /[T2:ClassTag](v:TypedPathItem[T2])=new Route2[T1,T2](this, v)
   def ->(f: T1=>Unit){
 
@@ -74,16 +74,17 @@ trait EntityProvider[T]{
   def provide(id:String):T
 }
 
-case class View(name:String, params:Map[String,Any]=Map())
-case class Json(any:Any)
-
 trait Controller{
   def route = new Route0
   val int = TypedPathItem[Int]()
-  val string = TypedPathItem[Int]()
+  val string = TypedPathItem[String]()
   implicit def c2t[T](v:Class[T])(implicit t:ClassTag[T],p:EntityProvider[T]) = TypedPathItem[T]()
   def opt[T:ClassTag](v:Class[T])  = TypedPathItem[Option[T]](v)
 
+  def view(name:String, params:Map[String,Any]=Map()){}
+  def json(any:Any){}
+
+  def async:AsyncContext = null
 }
 
 class Tiramisu extends Filter with Controller {
