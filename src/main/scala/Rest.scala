@@ -4,8 +4,6 @@ import javax.ws.rs.{Produces, GET, Path}
 import beans.BeanProperty
 import com.sun.jersey.api.view.Viewable
 import java.util.Date
-import scala.concurrent.future
-import org.codehaus.jackson.map.ObjectMapper
 import javax.ws.rs.core.{Context, MediaType}
 import javax.servlet.http.{HttpServletResponse, HttpServletRequest}
 

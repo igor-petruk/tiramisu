@@ -1,6 +1,7 @@
 package org.tiramisu.app
 
 import org.tiramisu._
+import org.tiramisu.providers._
 import akka.actor.{Props, Actor, ActorSystem}
 import akka.pattern.ask
 import scala.concurrent.util.duration._
@@ -43,6 +44,7 @@ trait BookController{
 
   // And then used
   routeBooks /"view" -> { (storeName, book)=>   // These params are type-safe, inferred from route
+    println(storeName+"/"+book)
     view("book.jsp", Map("storeName"->storeName,"book"->book))
   }
 
