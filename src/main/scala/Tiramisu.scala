@@ -9,7 +9,7 @@ import scala.annotation.tailrec
 object providers{
 
   implicit object StringDummyProvider extends EntityProvider[String]{
-    def provide(id: String):String = id
+    def provide(str: String):String = str
   }
 
   implicit object IntProvider extends EntityProvider[Int]{
@@ -144,6 +144,14 @@ trait EntityProvider[T]{
 
 trait Controller{
   self:Tiramisu =>
+
+  def jspPrefix = "/WEB-INF/jsp/"
+  def jspSuffix = ".jsp"
+
+  def request = requestObject.get()
+  def response = responseObject.get()
+  def out = response.getWriter
+
   def route = {
     val route = new Route0
     route.previous = null
@@ -156,14 +164,25 @@ trait Controller{
   implicit def c2t[T](v:Class[T])(implicit t:ClassTag[T],p:EntityProvider[T]) = TypedPathItem[T]()
   def opt[T:ClassTag](v:Class[T])  = TypedPathItem[Option[T]](v)
 
-  def view(name:String, params:Map[String,Any]=Map()){}
+  def view(jsp:String, params:AnyRef*){
+    for (value<-params){
+      value match {
+        case (key:String, data)=> request.setAttribute(key,data)
+        case other=> request.setAttribute(value.getClass.getSimpleName,value)
+      }
+    }
+    request.getRequestDispatcher(jspPrefix+jsp+jspSuffix).forward(request, response)
+  }
+
   def json(any:Any){}
 
   def async:AsyncContext = null
 }
 
 class Tiramisu extends Filter with Controller {
-
+  var requestObject = new ThreadLocal[HttpServletRequest]
+  var responseObject = new ThreadLocal[HttpServletResponse]
+  
   var routes = new Tree[PathItem, RouteHandler]
 
   def addRoute(newRoute:List[PathItem], handler:RouteHandler){
@@ -197,7 +216,11 @@ class Tiramisu extends Filter with Controller {
     
     val resultingHandler = traverse(stringPath, routes)
     resultingHandler match {
-      case Some(handler)=>handler.f(req)
+      case Some(handler)=>{
+        requestObject.set(req)
+        responseObject.set(response.asInstanceOf[HttpServletResponse])
+        handler.f(req)
+      }
       case None => chain.doFilter(request, response)
     }
     
