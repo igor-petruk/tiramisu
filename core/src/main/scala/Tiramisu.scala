@@ -175,8 +175,6 @@ trait Controller{
   }
 
   def json(any:Any){}
-
-  def async:AsyncContext = null
 }
 
 class Tiramisu extends Filter with Controller {
