@@ -2,6 +2,9 @@ package org.tiramisu.util
 
 import scala.collection.mutable._
 import annotation.tailrec
+import org.tiramisu.StringPathItem._
+import org.tiramisu.TypedPathItem._
+import org.tiramisu.{TypedPathItem, StringPathItem, RouteHandler, PathItem}
 
 class Tree[K, V] {
 
@@ -21,3 +24,26 @@ class Tree[K, V] {
 
 }
 
+class RoutesTree extends Tree[PathItem, RouteHandler]{
+
+  def traverse(path:List[String])= traverseMe (path, this)
+
+  @tailrec
+  private def traverseMe(path:List[String], routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
+    println("Trav:" + path)
+    path match{
+      case Nil=>Option(routesTree.value)
+      case head::tail => {
+        routesTree.children.get(StringPathItem(head)) match {
+          case Some(foundRoute) => traverseMe(tail, foundRoute)
+          case None => routesTree.children.get(TypedPathItem[AnyRef]()) match {
+            case Some(foundRoute) => traverseMe(tail, foundRoute)
+            case None => None
+          }
+        }
+      }
+    }
+  }
+
+
+}
