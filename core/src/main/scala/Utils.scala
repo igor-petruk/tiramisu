@@ -30,7 +30,6 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
 
   @tailrec
   private def traverseMe(path:List[String], routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
-    println("Trav:" + path)
     path match{
       case Nil=>Option(routesTree.value)
       case head::tail => {

@@ -2,7 +2,7 @@ package org.tiramisu
 
 import reflect.ClassTag
 
-trait Controller{
+trait Controller extends Compositing{
   self:Tiramisu =>
 
   def jspPrefix = "/WEB-INF/jsp/"
