@@ -64,6 +64,9 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <useFsc>false</useFsc>
+                </configuration>
             </plugin>
         </plugins>
     </build>

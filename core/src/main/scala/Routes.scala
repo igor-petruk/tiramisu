@@ -32,7 +32,7 @@ trait Route {
   }
 
   def parseRequest(path: List[PathItem], request: HttpServletRequest): List[Any] = {
-    println("Parsing " + request.getServletPath + " for " + path)
+    //println("Parsing " + request.getServletPath + " for " + path)
     (request.getServletPath.split("/").toList.tail zip path) collect {
       case (str, item: TypedPathItem[_]) => item.provider.provide(str)
     }

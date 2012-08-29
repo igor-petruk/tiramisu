@@ -1,6 +1,12 @@
 package org.tiramisu
 
 import xml._
+import factory.XMLLoader
+import parsing.{XhtmlParser, ConstructingParser}
+import scala.collection.concurrent.TrieMap
+import javax.xml.parsers.SAXParserFactory
+import java.net.URL
+import scala.xml.dtd.DTD
 
 
 trait Tag{
@@ -10,67 +16,76 @@ trait Tag{
     def attributeAsText(key:String):Option[String]=node.attribute(key).map(_.text)
   }
 
-  def transform(elem:Elem):Option[NodeSeq]
+  def transform(elem:Elem, context:PageContext):(NodeSeq,PageContext)
 }
 
 case class TagDescriptor(namespace:String, tags:Seq[Tag])
 
+case class PageContext(map:Map[String,AnyRef]){
+  def withItem(key:String, value:AnyRef) = PageContext(map + (key->value))
+}
 
 trait Compositing{ self:Controller=>
   def tiraviewPrefix = "/WEB-INF/tiraview/"
   def tiraviewSuffix = ".xhtml"
 
-  def processTag(node:Elem):Option[NodeSeq]={
-    val proc = node match {
+  def processTag(node:Elem, context: PageContext):(NodeSeq,PageContext)={
+    node match {
       case someElem:Elem if (descriptors.contains(someElem.namespace)) =>{
-        val desc = descriptors(someElem.namespace).get(someElem.label)
-        for (descFound <- desc; processed <- descFound.transform(node)) yield processed
+        descriptors(someElem.namespace).get(someElem.label) match {
+          case Some(descriptor) =>  descriptor.transform(node, context)
+          case _ => sys.error("No tag "+someElem.label)
+        }
       }
-      case _=>None
+      case _=>(node, context)
     }
-    proc
   }
 
-  def processTags(node:Node):NodeSeq={
+  def processChildren(children:Seq[Node], startState:PageContext)={
+    val processedCh = children.foldLeft((List[Node](),startState)){(acc, node)=>
+      val processed = processTags(node, acc._2)
+      (acc._1 ++ processed._1, processed._2)
+    }
+    (NodeSeq.fromSeq(processedCh._1), processedCh._2)
+  }
+  
+  def processTags(node:Node, context:PageContext):(NodeSeq,PageContext)={
     node match {
       case elem:Elem =>  {
-        val p = processTag(elem) match {
-          case Some(newTag) => newTag
-          case None => elem
-        }
-        val result = p match {
+        //println("Processing elem: "+elem)
+        val q@(processedElem, startContext) = processTag(elem, context)
+        //println("Processed tag: "+q)
+        processedElem match {
           case someElem:Elem => {
-            val processedChildren = someElem.child.flatMap(processTags(_))
+
+            val (processedChildren,finalContext) = processChildren(someElem.child, startContext)
             import someElem._
-            Elem(prefix,label,someElem.attributes,
+            val finalElem = Elem(prefix,label,someElem.attributes,
               /*TODO: Not topscope!!!*/TopScope,
-              minimizeEmpty, processedChildren.toArray:_*)
+              false, processedChildren.toArray:_*)
+            (finalElem, finalContext)
           }
-          case _ => p.flatMap(processTags(_))
+          case _ => processChildren(processedElem,startContext)
         }
-        result
       }
-      case _ => node
+      case _ => (node,context)
     }
   }
 
   val tContent = new Tag {
     def name = "content"
 
-    def transform(elem: Elem) = {
-      val page = tComposite.currentPage.get
+    def transform(elem: Elem, context: PageContext) =  {
+      val page = context.map("currentPage").asInstanceOf[Elem]
       val data = (for (dataItem <- page \\ "data"
                        if (dataItem.namespace == elem.namespace)
                          && (dataItem.attributeAsText("name")==elem.attributeAsText("name"))
       ) yield dataItem).head
 
-      val m = data match {
-        case someElem:Elem => {
-          someElem.child
-        }
-        case _ => elem.child
+      data match {
+        case someElem:Elem => (someElem.child,context)
+        case _ => (elem.child,context)
       }
-      Some(m)
     }
 
   }
@@ -78,22 +93,36 @@ trait Compositing{ self:Controller=>
   val tComposite = new Tag{
     def name = "composite"
 
-    val currentPage = new ThreadLocal[Elem]
-
-    def transform(elem: Elem) = {
-      currentPage.set(elem)
-      for (templateName <- elem.attributeAsText("template");
+    def transform(elem: Elem, context: PageContext) = {
+      val template = for (templateName <- elem.attributeAsText("template");
            template <- getTemplate(templateName)) yield template
+      template match {
+        case Some(document) => (
+          document.children,
+          context withItem ("currentPage",elem)
+                  withItem ("dtd",document.dtd)
+        )
+        case _ => sys.error("")
+      }
     }
-    
-    def getTemplate(name:String):Option[Elem]=Some(loadXml(name))
+
+    def getTemplate(name:String):Option[Document]={
+      val xml = loadXml(name)
+      //println(xml)
+      Some(xml)
+    }
   }
+
+  val loadedXmls = scala.collection.concurrent.TrieMap[String,Document]()
   
-  def loadXml(name:String)={
+  def loadXml(name:String):Document=loadedXmls.getOrElseUpdate(name,{
+
     val xmlResourse = tiraviewPrefix+name+tiraviewSuffix;
-    println("Loading "+xmlResourse)
-    XML.load(getClass.getResource(xmlResourse))
-  }
+    //println("Loading "+xmlResourse)
+    val parser = scala.xml.parsing.ConstructingParser.fromSource(io.Source.fromURL(getClass.getResource(xmlResourse)), true)
+    val doc = parser.document()
+    doc
+  })
 
   def toDescriptorMap(list:TagDescriptor*)=list.groupBy(_.namespace).map{item=>
     (
@@ -108,12 +137,22 @@ trait Compositing{ self:Controller=>
     TagDescriptor("http://tiramisu.org/dev-0", List(tComposite, tContent))
   )
 
+  val composedPages = new TrieMap()
+
   def compose(pageName:String){
     val page = loadXml(pageName)
-    val processed = processTags(page)
+    page.dtd
+    //println("Got: "+page)
+    val (finalPage, finalContext) = processTags(page.docElem, PageContext(Map()))
     response.setContentType("text/html")//; charset=utf-8")
     response.setCharacterEncoding("utf-8")
-    out.println("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">")
-    out.println(processed)
+    val dtd = finalContext.map("dtd").asInstanceOf[DTD]
+    out.print(
+        "<!DOCTYPE html %s%s>".format(
+          Option(dtd.externalID) getOrElse "",
+          dtd.decls.mkString("", "\n", "")
+        )
+      )
+    out.println(finalPage)
   }
 }

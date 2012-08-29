@@ -21,9 +21,6 @@ class Tiramisu extends Filter with Controller {
   def doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
     val req = request.asInstanceOf[HttpServletRequest]
     val stringPath = req.getServletPath.split("/").toList.tail
-    
-    println("Handling "+stringPath)
-    
     val resultingHandler = routes.traverse(stringPath)
     resultingHandler match {
       case Some(handler)=>{
