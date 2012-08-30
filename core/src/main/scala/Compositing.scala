@@ -1,13 +1,13 @@
 package org.tiramisu
 
 import xml._
+import dtd.{DocType, DTD}
 import factory.XMLLoader
 import parsing.{XhtmlParser, ConstructingParser}
 import scala.collection.concurrent.TrieMap
 import javax.xml.parsers.SAXParserFactory
 import java.net.URL
-import scala.xml.dtd.DTD
-
+import org.apache.commons.jexl2.{JexlContext, JexlEngine, Expression}
 
 trait Tag{
   def name:String
@@ -113,6 +113,28 @@ trait Compositing{ self:Controller=>
     }
   }
 
+  val tOut = new Tag{
+    def name: String = "out"
+
+    val jexlEngine = new JexlEngine()
+    val cache = new TrieMap[String, Expression]()
+
+    class PageJexlContext(context:PageContext) extends JexlContext {
+      def get(name: String): AnyRef = context.map(name)
+
+      def set(name: String, value: AnyRef) {}
+
+      def has(name: String): Boolean = context.map.contains(name)
+    }
+
+    def transform(elem: Elem, context: PageContext): (NodeSeq, PageContext) = {
+      val expressionText = elem.attributeAsText("value").getOrElse("");
+      val expression = cache.getOrElseUpdate(expressionText,jexlEngine.createExpression(expressionText));
+      val text=expression.evaluate(new PageJexlContext(context)).toString
+      (Text(text),context)
+    }
+  }
+
   val loadedXmls = scala.collection.concurrent.TrieMap[String,Document]()
   
   def loadXml(name:String):Document=loadedXmls.getOrElseUpdate(name,{
@@ -134,16 +156,20 @@ trait Compositing{ self:Controller=>
   }
 
   val descriptors = toDescriptorMap(
-    TagDescriptor("http://tiramisu.org/dev-0", List(tComposite, tContent))
+    TagDescriptor("http://tiramisu.org/dev-0", List(tComposite, tContent,tOut))
   )
 
-  val composedPages = new TrieMap()
-
-  def compose(pageName:String){
+  def compose(pageName:String, params:AnyRef*){
     val page = loadXml(pageName)
-    page.dtd
-    //println("Got: "+page)
-    val (finalPage, finalContext) = processTags(page.docElem, PageContext(Map()))
+
+    val map = (for (value<-params) yield
+      value match {
+        case (key:String, data:AnyRef)=> (key->data)
+        case other=> (value.getClass.getSimpleName->value)
+      }
+    ).toMap[String,AnyRef]
+
+    val (finalPage, finalContext) = processTags(page.docElem, PageContext(map))
     response.setContentType("text/html")//; charset=utf-8")
     response.setCharacterEncoding("utf-8")
     val dtd = finalContext.map("dtd").asInstanceOf[DTD]
@@ -153,6 +179,7 @@ trait Compositing{ self:Controller=>
           dtd.decls.mkString("", "\n", "")
         )
       )
-    out.println(finalPage)
+    XML.write(out, finalPage(1),"utf-8",false, DocType("html",dtd.externalID,dtd.decls))
+    //out.println(finalPage)
   }
 }
