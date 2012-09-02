@@ -47,6 +47,22 @@ trait Route {
       Nil
 }
 
+sealed trait SecurityOutcome
+case object Accept extends SecurityOutcome
+case object Reject extends SecurityOutcome
+
+sealed trait Method
+case object Post extends Method
+case object Get extends Method
+
+sealed trait OnResource
+case object All extends OnResource
+case class Item(id:String) extends OnResource
+
+abstract class RestResource[T](implicit provider:EntityProvider[T]) extends Route0{
+  def secure:PartialFunction[(Method,OnResource),SecurityOutcome]
+}
+
 class Route0 extends Route {
   def /(v: String) = setup(new Route0, this, StringPathItem(v), StringDummyProvider)
 
@@ -58,6 +74,10 @@ class Route0 extends Route {
       f
     }
     servlet.addRoute(path, RouteHandler(handler))
+  }
+
+  def ->[T] (r: RestResource[T]){
+
   }
 }
 
