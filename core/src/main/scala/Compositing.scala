@@ -3,9 +3,10 @@ package org.tiramisu
 import xml._
 import dtd.{DTD}
 import org.apache.commons.jexl2.{JexlContext, JexlEngine, Expression}
-import collection.Iterable
-import scala.collection.mutable
 import java.io.{PrintWriter}
+import collection.{Iterable, mutable}
+import collection.JavaConversions._
+import collection.convert.Wrappers
 
 class PageContext{
   val attributes = mutable.Map[String,AnyRef]()
@@ -144,17 +145,17 @@ trait Compositing{ self:Controller=>
     }
   }
 
+  class PageJexlContext(context:PageContext) extends JexlContext {
+    def get(name: String): AnyRef = context.attributes(name)
+
+    def set(name: String, value: AnyRef) {}
+
+    def has(name: String): Boolean = context.attributes.contains(name)
+  }
+
   val tOut = new Tag{
     def name = "out"
     val engine = new JexlEngine
-
-    class PageJexlContext(context:PageContext) extends JexlContext {
-      def get(name: String): AnyRef = context.attributes(name)
-
-      def set(name: String, value: AnyRef) {}
-
-      def has(name: String): Boolean = context.attributes.contains(name)
-    }
 
     case class OutChunk(expression:Expression) extends PageChunk{
       def write(context: PageContext, writer:PrintWriter){
@@ -175,7 +176,18 @@ trait Compositing{ self:Controller=>
 
     case class ForChunk(variable:String, expression:Expression, body:Iterable[PageChunk]) extends PageChunk{
       def write(context: PageContext, writer:PrintWriter){
-
+        val oldValue = context.attributes.get(variable)
+        val list = expression.evaluate(new PageJexlContext(context)).asInstanceOf[Wrappers.SeqWrapper[AnyRef]]
+        for (i<-list){
+          context.attributes.put(variable,i)
+          for (bodyItem<-body){
+            bodyItem.write(context, writer)
+          }
+        }
+        oldValue match {
+          case Some(old)=>context.attributes.put(variable,old)
+          case None => context.attributes.remove(variable)
+        }
       }
     }
 
@@ -205,7 +217,7 @@ trait Compositing{ self:Controller=>
     
     def write(pageContext:PageContext){
       if (dtd!=null){
-        out.print(
+        out.println(
          "<!DOCTYPE html %s%s>".format(
            Option(dtd.externalID) getOrElse "",
            dtd.decls.mkString("", "\n", "")
@@ -230,12 +242,20 @@ trait Compositing{ self:Controller=>
     }
     page
   })
-  
+
+  def convertInput(data:AnyRef)={
+    data match {
+      case seq:Seq[AnyRef] => seq:java.util.List[AnyRef]
+      case map:Map[AnyRef,AnyRef] => map:java.util.Map[AnyRef,AnyRef]
+      case other => other
+    }
+  }
+
   def compose(pageName:String, params:AnyRef*){
     val map = (for (value<-params) yield
       value match {
-        case (key:String, data:AnyRef)=> (key->data)
-        case other=> (value.getClass.getSimpleName->value)
+        case (key:String, data:AnyRef)=> (key->convertInput(data))
+        case other=> (value.getClass.getSimpleName->convertInput(value))
       }
       ).toMap[String,AnyRef]
     response.setContentType("text/html")//; charset=utf-8")
