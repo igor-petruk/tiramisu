@@ -10,8 +10,9 @@ import collection.convert.Wrappers
 
 class PageContext{
   val attributes = mutable.Map[String,AnyRef]()
-
 }
+
+case class PageCacheKey(pageName:String, template:Option[String])
 
 sealed trait PageChunk{
   def write(context:PageContext, writer:PrintWriter)
@@ -54,12 +55,19 @@ case class TagDescriptor(namespace:String, tags:Seq[Tag])
 
 class CompilationContext{
   val attributes = mutable.Map[String,AnyRef]()
+  var template:Option[String] = None
   val pageCode = new PageCode
 }
 
-trait Compositing{ self:Controller=>
+trait Compositing{ self:Tiramisu=>
   def tiraviewPrefix = "/WEB-INF/tiraview/"
   def tiraviewSuffix = ".xhtml"
+
+  implicit def stringPimp(s:String) = new {
+    def withTemplate(template:String) = PageCacheKey(s,Some(template))
+  }
+
+  var syntacticScopeConfiguration = RouteConfiguration()
 
   def processTags(node:Node, context:CompilationContext, pscope:NamespaceBinding = TopScope){
     import context.pageCode._
@@ -118,7 +126,7 @@ trait Compositing{ self:Controller=>
     def name = "composite"
 
     def run(elem: Elem, context: CompilationContext,pscope:NamespaceBinding=TopScope){
-      for (template<-elem.attributeAsText("template")){
+      for (template<-context.template){
         val xml = loadXml(template)
         if (!context.attributes.contains("dtd"))
           context.attributes.put("dtd",xml.dtd)
@@ -230,11 +238,12 @@ trait Compositing{ self:Controller=>
     }
   }
 
-  val loadedPages = scala.collection.concurrent.TrieMap[String,Page]()
+  val loadedPages = scala.collection.concurrent.TrieMap[PageCacheKey,Page]()
 
-  def loadPage(pageName:String):Page=loadedPages.getOrElseUpdate(pageName,{
-    val pageXml = loadXml(pageName)
+  def loadPage(key:PageCacheKey):Page=loadedPages.getOrElseUpdate(key,{
+    val pageXml = loadXml(key.pageName)
     val compilationContext = new CompilationContext
+    compilationContext.template = key.template
     processTags(pageXml.docElem, compilationContext)
     val page = new Page(compilationContext.pageCode.code.reverse)
     for (dtdRef <- compilationContext.attributes.get("dtd")){
@@ -251,7 +260,14 @@ trait Compositing{ self:Controller=>
     }
   }
 
-  def compose(pageName:String, params:AnyRef*){
+  def template(name:String)(body: =>Unit){
+    val old = syntacticScopeConfiguration
+    syntacticScopeConfiguration = old.copy(template=Some(name))
+    body;
+    syntacticScopeConfiguration = old;
+  }
+
+  def compose(key:PageCacheKey, params:AnyRef*){
     val map = (for (value<-params) yield
       value match {
         case (key:String, data:AnyRef)=> (key->convertInput(data))
@@ -262,7 +278,11 @@ trait Compositing{ self:Controller=>
     response.setCharacterEncoding("utf-8")
     val pageContext = new PageContext
     pageContext.attributes ++= map
-    val page = loadPage(pageName)
+    val page = loadPage(key)
     page.write(pageContext)
+  }
+
+  def compose(pageName:String, params:AnyRef*){
+    compose(PageCacheKey(pageName, routeConfiguration.get.template), params:_*)
   }
 }

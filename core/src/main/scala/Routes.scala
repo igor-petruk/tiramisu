@@ -13,7 +13,9 @@ case class TypedPathItem[T:ClassTag](optioned:Class[_]=null) extends PathItem{
   override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType+"/"+optioned)
 }
 
-case class RouteHandler(f:HttpServletRequest=>Unit)
+case class RouteConfiguration(template:Option[String]=None)
+
+case class RouteHandler(f:HttpServletRequest=>Unit, configuration:RouteConfiguration)
 
 trait Route {
   var previous: Route = _
@@ -73,7 +75,7 @@ class Route0 extends Route {
     def handler(h: HttpServletRequest) {
       f
     }
-    servlet.addRoute(path, RouteHandler(handler))
+    servlet.addRoute(path, RouteHandler(handler, servlet.syntacticScopeConfiguration))
   }
 
   def ->[T] (r: RestResource[T]){
@@ -92,7 +94,7 @@ class Route1[T1: ClassTag] extends Route {
       val parsedParams = parseRequest(path, h)
       f(parsedParams(0).asInstanceOf[T1])
     }
-    servlet.addRoute(path, RouteHandler(handler))
+    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
   }
 }
 
@@ -110,7 +112,7 @@ class Route2[T1: ClassTag, T2: ClassTag] extends Route {
         parsedParams(1).asInstanceOf[T2]
       )
     }
-    servlet.addRoute(path, RouteHandler(handler))
+    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
   }
 }
 
@@ -129,7 +131,7 @@ class Route3[T1: ClassTag, T2: ClassTag, T3: ClassTag] extends Route {
         parsedParams(2).asInstanceOf[T3]
       )
     }
-    servlet.addRoute(path, RouteHandler(handler))
+    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
   }
 }
 
@@ -146,7 +148,7 @@ class Route4[T1, T2, T3, T4] extends Route {
         parsedParams(3).asInstanceOf[T4]
       )
     }
-    servlet.addRoute(path, RouteHandler(handler))
+    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
   }
 }
 

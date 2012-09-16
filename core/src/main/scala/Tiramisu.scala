@@ -2,13 +2,13 @@ package org.tiramisu
 
 import javax.servlet._
 import javax.servlet.http._
-import scala.annotation.tailrec
-import util.{RoutesTree, Tree}
+import util.{RoutesTree}
 
-class Tiramisu extends Filter with Controller {
-  var requestObject = new ThreadLocal[HttpServletRequest]
-  var responseObject = new ThreadLocal[HttpServletResponse]
-  
+class Tiramisu extends Filter with Controller with Compositing {
+  val requestObject = new ThreadLocal[HttpServletRequest]
+  val responseObject = new ThreadLocal[HttpServletResponse]
+  val routeConfiguration = new ThreadLocal[RouteConfiguration]
+
   var routes = new RoutesTree
 
   def addRoute(newRoute:List[PathItem], handler:RouteHandler){
@@ -26,6 +26,7 @@ class Tiramisu extends Filter with Controller {
       case Some(handler)=>{
         requestObject.set(req)
         responseObject.set(response.asInstanceOf[HttpServletResponse])
+        routeConfiguration.set(handler.configuration)
         handler.f(req)
       }
       case None => chain.doFilter(request, response)
