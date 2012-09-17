@@ -1,12 +1,52 @@
 package org.tiramisu
 
 import reflect.ClassTag
+import javax.servlet.http.{HttpServletResponse, HttpServletRequest}
+import org.tiramisu.util.RoutesTree
+import javax.servlet.{FilterChain, ServletResponse, ServletRequest, FilterConfig}
 
 trait Controller extends Compositing{
   self:Tiramisu =>
 
   def jspPrefix = "/WEB-INF/jsp/"
   def jspSuffix = ".jsp"
+
+  val requestObject = new ThreadLocal[HttpServletRequest]
+  val responseObject = new ThreadLocal[HttpServletResponse]
+  val routeConfiguration = new ThreadLocal[RouteConfiguration]
+
+  var routes = new RoutesTree
+
+  def addRoute(newRoute:List[PathItem], handler:RouteHandler){
+    routes.add(newRoute, handler)
+  }
+
+  def init(filterConfig: FilterConfig) {
+  }
+
+  def doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
+    val req = request.asInstanceOf[HttpServletRequest]
+    val stringPath = {
+      val split = req.getServletPath.split("/").toList.tail
+      if (req.getServletPath.endsWith("/"))
+        split:::""::Nil
+      else
+        split
+    }
+    val resultingHandler = routes.traverse(stringPath)
+    resultingHandler match {
+      case Some(handler)=>{
+        requestObject.set(req)
+        responseObject.set(response.asInstanceOf[HttpServletResponse])
+        routeConfiguration.set(handler.configuration)
+        handler.f(req)
+      }
+      case None => chain.doFilter(request, response)
+    }
+
+  }
+
+  def destroy() {}
 
   def request = requestObject.get()
   def response = responseObject.get()

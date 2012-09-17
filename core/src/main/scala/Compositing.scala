@@ -60,7 +60,7 @@ class CompilationContext{
   val pageCode = new PageCode
 }
 
-trait Compositing{ self:Tiramisu=>
+trait Compositing { self:Tiramisu=>
   def tiraviewPrefix = "/WEB-INF/tiraview/"
   def tiraviewSuffix = ".xhtml"
 
@@ -152,6 +152,7 @@ trait Compositing{ self:Tiramisu=>
 
     def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
       val page = context.attributes("currentPage").asInstanceOf[Elem]
+      // TODO: bug here, what if no override specified
       val data = (for (dataItem <- page \\ "data"
                        if (dataItem.namespace == elem.namespace)
                          && (dataItem.attributeAsText("name")==elem.attributeAsText("name"))
@@ -258,7 +259,13 @@ trait Compositing{ self:Tiramisu=>
       context.attributes ++= compilationContext.attributes
       val body = compilationContext.pageCode.code.reverse
       val wc = WrappedChunk(elem, body, elem.scope, {(el, pageContext)=>
-        val md = new UnprefixedAttribute("data-tiramisu-ajax","true",Null)
+        val newClass = {
+          elem.attributeAsText("class") match {
+            case Some(value)=>value+" tiramisu-ajax-link";
+            case None => "tiramisu-ajax-link"
+          }
+        }
+        val md = new UnprefixedAttribute("class",newClass,Null)
         val thisTemplate = routeConfiguration.get().template
         val path = buildPath(elem.attributeAsText("href").get)
         val thatTemplate = routes.traverseDynamic(path).flatMap(_.configuration.template)
@@ -272,36 +279,51 @@ trait Compositing{ self:Tiramisu=>
       context.pageCode.append(wc)
     }
 
-    case class WrappedChunk(elem:Elem,
-                            body:Iterable[PageChunk],
-                            pscope:NamespaceBinding,
-                            transform:(Elem, PageContext)=>Elem) extends PageChunk{
-      def write(context: PageContext, writer:PrintWriter){
-        val newElem = transform(elem, context)
-        val sb = new StringBuilder
-        sb.append('<')
-        newElem.nameToString(sb)
-        if (newElem.attributes ne null) newElem.attributes.buildString(sb)
-        newElem.scope.buildString(sb, pscope)
-        sb.append('>')
-        writer.print(sb)
+  }
 
-        for (bodyItem<-body){
-          bodyItem.write(context, writer)
+  val tResources = new Tag{
+    def name = "resources"
+
+    def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding) = {
+      import context.pageCode._
+      for (value <- elem.attributeAsText("value")){
+        val resourceNames = value.split(",").filter(!_.isEmpty)
+        for (resourceName<-resourceNames;
+             resource<-resourcesMap.get(resourceName)){
+            print(resource.resource(None)+"\n")
         }
-
-        sb.clear()
-        sb.append("</")
-        newElem.nameToString(sb)
-        sb.append('>')
-        writer.print(sb)
       }
     }
+  }
 
+  case class WrappedChunk(elem:Elem,
+                          body:Iterable[PageChunk],
+                          pscope:NamespaceBinding,
+                          transform:(Elem, PageContext)=>Elem) extends PageChunk{
+    def write(context: PageContext, writer:PrintWriter){
+      val newElem = transform(elem, context)
+      val sb = new StringBuilder
+      sb.append('<')
+      newElem.nameToString(sb)
+      if (newElem.attributes ne null) newElem.attributes.buildString(sb)
+      newElem.scope.buildString(sb, pscope)
+      sb.append('>')
+      writer.print(sb)
+
+      for (bodyItem<-body){
+        bodyItem.write(context, writer)
+      }
+
+      sb.clear()
+      sb.append("</")
+      newElem.nameToString(sb)
+      sb.append('>')
+      writer.print(sb)
+    }
   }
 
   val descriptors = toDescriptorMap(
-    TagDescriptor("http://tiramisu.org/dev-0", List(tComposite,tContent,tOut,tFor)),
+    TagDescriptor("http://tiramisu.org/dev-0", List(tComposite,tContent,tOut,tFor,tResources)),
     TagDescriptor(null, List(genericA))
   )
 
