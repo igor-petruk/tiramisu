@@ -13,7 +13,7 @@ case class TypedPathItem[T:ClassTag](optioned:Class[_]=null) extends PathItem{
   override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType+"/"+optioned)
 }
 
-case class RouteConfiguration(template:Option[String]=None)
+case class RouteConfiguration(template:Option[String]=None, route:List[PathItem]=Nil)
 
 case class RouteHandler(f:HttpServletRequest=>Unit, configuration:RouteConfiguration)
 
@@ -34,10 +34,15 @@ trait Route {
   }
 
   def parseRequest(path: List[PathItem], request: HttpServletRequest): List[Any] = {
-    //println("Parsing " + request.getServletPath + " for " + path)
     (request.getServletPath.split("/").toList.tail zip path) collect {
       case (str, item: TypedPathItem[_]) => item.provider.provide(str)
     }
+  }
+
+  def addRoute(handler:HttpServletRequest=>Unit){
+    servlet.addRoute(path, RouteHandler(handler,
+      servlet.syntacticScopeConfiguration.copy(route = path)
+    ))
   }
 
   lazy val path = traverse.reverse
@@ -75,7 +80,7 @@ class Route0 extends Route {
     def handler(h: HttpServletRequest) {
       f
     }
-    servlet.addRoute(path, RouteHandler(handler, servlet.syntacticScopeConfiguration))
+    addRoute(handler)
   }
 
   def ->[T] (r: RestResource[T]){
@@ -94,7 +99,7 @@ class Route1[T1: ClassTag] extends Route {
       val parsedParams = parseRequest(path, h)
       f(parsedParams(0).asInstanceOf[T1])
     }
-    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
+    addRoute(handler)
   }
 }
 
@@ -112,7 +117,7 @@ class Route2[T1: ClassTag, T2: ClassTag] extends Route {
         parsedParams(1).asInstanceOf[T2]
       )
     }
-    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
+    addRoute(handler)
   }
 }
 
@@ -131,7 +136,7 @@ class Route3[T1: ClassTag, T2: ClassTag, T3: ClassTag] extends Route {
         parsedParams(2).asInstanceOf[T3]
       )
     }
-    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
+    addRoute(handler)
   }
 }
 
@@ -148,7 +153,7 @@ class Route4[T1, T2, T3, T4] extends Route {
         parsedParams(3).asInstanceOf[T4]
       )
     }
-    servlet.addRoute(path, RouteHandler(handler,servlet.syntacticScopeConfiguration))
+    addRoute(handler)
   }
 }
 

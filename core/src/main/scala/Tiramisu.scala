@@ -20,7 +20,13 @@ class Tiramisu extends Filter with Controller with Compositing {
 
   def doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
     val req = request.asInstanceOf[HttpServletRequest]
-    val stringPath = req.getServletPath.split("/").toList.tail
+    val stringPath = {
+      val split = req.getServletPath.split("/").toList.tail
+      if (req.getServletPath.endsWith("/"))
+        split:::""::Nil
+      else
+        split
+    }
     val resultingHandler = routes.traverse(stringPath)
     resultingHandler match {
       case Some(handler)=>{

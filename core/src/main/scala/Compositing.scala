@@ -8,8 +8,9 @@ import collection.{Iterable, mutable}
 import collection.JavaConversions._
 import collection.convert.Wrappers
 
-class PageContext{
+trait PageContext{
   val attributes = mutable.Map[String,AnyRef]()
+  val route: List[PathItem]
 }
 
 case class PageCacheKey(pageName:String, template:Option[String])
@@ -69,37 +70,47 @@ trait Compositing{ self:Tiramisu=>
 
   var syntacticScopeConfiguration = RouteConfiguration()
 
+  private def writeElemStart(el:Elem, context:CompilationContext, pscope:NamespaceBinding = TopScope){
+    import context.pageCode._
+    val sb = new StringBuilder
+    sb.append('<')
+    el.nameToString(sb)
+    if (el.attributes ne null) el.attributes.buildString(sb)
+    el.scope.buildString(sb, pscope)
+    sb.append('>')
+    print(sb)
+  }
+
+  private def writeElemEnd(el:Elem, context:CompilationContext, pscope:NamespaceBinding = TopScope){
+    import context.pageCode._
+    val sb = new StringBuilder
+    sb.append("</")
+    el.nameToString(sb)
+    sb.append('>')
+    print(sb)
+  }
+
+  private def writeElem(el:Elem, context:CompilationContext, pscope:NamespaceBinding = TopScope){
+    writeElemStart(el, context, pscope)
+    for (child<-el.child){
+      processTags(child,context,el.scope)
+    }
+    writeElemEnd(el, context, pscope)
+  }
+  
   def processTags(node:Node, context:CompilationContext, pscope:NamespaceBinding = TopScope){
     import context.pageCode._
     node match {
-      case taggedElem:Elem if (descriptors.contains(taggedElem.namespace)) =>{
+      case taggedElem:Elem =>{
         descriptors(taggedElem.namespace).get(taggedElem.label) match {
           case Some(descriptor) =>  {
             descriptor.run(taggedElem, context)
           }
-          case _ => processTags(taggedElem.copy(prefix="q"),context,pscope) //sys.error("No tag "+taggedElem.label)
+          case _ => writeElem(taggedElem, context, pscope) //sys.error("No tag "+taggedElem.label)
         }
       }
       case s: SpecialNode               => print(s buildString new StringBuilder)
       case g: Group                     => for (c <- g.nodes) processTags(c,context, g.scope)
-      case el: Elem  => {
-        // print tag with namespace declarations
-        val sb = new StringBuilder
-        sb.append('<')
-        el.nameToString(sb)
-        if (el.attributes ne null) el.attributes.buildString(sb)
-        el.scope.buildString(sb, pscope)
-        sb.append('>')
-        print(sb)
-        for (child<-el.child){
-          processTags(child,context,el.scope)
-        }
-        sb.clear()
-        sb.append("</")
-        el.nameToString(sb)
-        sb.append('>')
-        print(sb)
-      }
       case _ => throw new IllegalArgumentException("Don't know how to serialize a " + node.getClass.getName)
     }
   }
@@ -145,10 +156,16 @@ trait Compositing{ self:Tiramisu=>
                        if (dataItem.namespace == elem.namespace)
                          && (dataItem.attributeAsText("name")==elem.attributeAsText("name"))
       ) yield dataItem).head
-
+      import context.pageCode._
+      for (name<-elem.attributeAsText("name")){
+        print("<t:content name='"+name+"'>")
+      }
       data match {
         case someElem:Elem => for (el<-someElem.child) processTags(el,context,someElem.scope)
         case _ => for (el<-elem.child) processTags(el,context,elem.scope)
+      }
+      for (name<-elem.attributeAsText("name")){
+        print("</t:content>")
       }
     }
   }
@@ -214,8 +231,78 @@ trait Compositing{ self:Tiramisu=>
     }
   }
 
+  val genericA = new Tag{
+    def name = "a"
+
+    def buildPath(href:String)={
+      val pureHref = {
+        val pos = href.indexOf('?')
+        if (pos!= -1) href.substring(0,pos) else href
+      }
+      val stringPath =  pureHref.split('/')
+      if (stringPath(0)=="")
+        stringPath.toList.tail.map(StringPathItem(_))
+      else
+        routeConfiguration.get().route.reverse.tail.reverse:::
+          stringPath.toList.filter(_!=".").map(StringPathItem(_))
+    }
+    
+    def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding){
+
+      val compilationContext = new CompilationContext
+      compilationContext.attributes ++= context.attributes
+      for (el<-elem.child){
+        processTags(el, compilationContext, elem.scope)
+      }
+      context.attributes.clear
+      context.attributes ++= compilationContext.attributes
+      val body = compilationContext.pageCode.code.reverse
+      val wc = WrappedChunk(elem, body, elem.scope, {(el, pageContext)=>
+        val md = new UnprefixedAttribute("data-tiramisu-ajax","true",Null)
+        val thisTemplate = routeConfiguration.get().template
+        val path = buildPath(elem.attributeAsText("href").get)
+        val thatTemplate = routes.traverseDynamic(path).flatMap(_.configuration.template)
+        val newElem = if (thisTemplate!=None && thisTemplate==thatTemplate)
+          elem.copy(attributes=elem.attributes.append(md) )
+        else
+          elem
+        newElem
+      })
+
+      context.pageCode.append(wc)
+    }
+
+    case class WrappedChunk(elem:Elem,
+                            body:Iterable[PageChunk],
+                            pscope:NamespaceBinding,
+                            transform:(Elem, PageContext)=>Elem) extends PageChunk{
+      def write(context: PageContext, writer:PrintWriter){
+        val newElem = transform(elem, context)
+        val sb = new StringBuilder
+        sb.append('<')
+        newElem.nameToString(sb)
+        if (newElem.attributes ne null) newElem.attributes.buildString(sb)
+        newElem.scope.buildString(sb, pscope)
+        sb.append('>')
+        writer.print(sb)
+
+        for (bodyItem<-body){
+          bodyItem.write(context, writer)
+        }
+
+        sb.clear()
+        sb.append("</")
+        newElem.nameToString(sb)
+        sb.append('>')
+        writer.print(sb)
+      }
+    }
+
+  }
+
   val descriptors = toDescriptorMap(
-    TagDescriptor("http://tiramisu.org/dev-0", List(tComposite,tContent,tOut,tFor))
+    TagDescriptor("http://tiramisu.org/dev-0", List(tComposite,tContent,tOut,tFor)),
+    TagDescriptor(null, List(genericA))
   )
 
   class Page(fCode:List[PageChunk]){
@@ -276,7 +363,9 @@ trait Compositing{ self:Tiramisu=>
       ).toMap[String,AnyRef]
     response.setContentType("text/html")//; charset=utf-8")
     response.setCharacterEncoding("utf-8")
-    val pageContext = new PageContext
+    val pageContext = new PageContext{
+      val route = routeConfiguration.get().route
+    }
     pageContext.attributes ++= map
     val page = loadPage(key)
     page.write(pageContext)

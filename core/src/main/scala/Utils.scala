@@ -28,6 +28,25 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
 
   def traverse(path:List[String])= traverseMe (path, this)
 
+  def traverseDynamic(path:List[PathItem])= traverseMeDyn (path, this)
+
+  @tailrec
+  private def traverseMeDyn(path:List[PathItem], routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
+    // TODO: bad bug may be hidden here
+    path match{
+      case Nil=>Option(routesTree.value)
+      case head::tail => {
+        routesTree.children.get(head) match {
+          case Some(foundRoute) => traverseMeDyn(tail, foundRoute)
+          case None => routesTree.children.get(TypedPathItem[AnyRef]()) match {
+            case Some(foundRoute) => traverseMeDyn(tail, foundRoute)
+            case None => None
+          }
+        }
+      }
+    }
+  }
+
   @tailrec
   private def traverseMe(path:List[String], routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
     path match{
