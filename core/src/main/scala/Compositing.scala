@@ -9,6 +9,14 @@ import collection.JavaConversions._
 import collection.convert.Wrappers
 import annotation.tailrec
 
+class CompilationContext(es:ExpressionService){
+  val attributes = mutable.Map[String,AnyRef]()
+  var template:Option[String] = None
+  val pageCode = new PageCode(es)
+
+  def expressionService = es
+}
+
 trait PageContext{
   val attributes = mutable.Map[String,AnyRef]()
   val route: List[PathItem]
@@ -16,39 +24,19 @@ trait PageContext{
 
 case class PageCacheKey(pageName:String, template:Option[String])
 
-sealed trait PageChunk{
-  def write(context:PageContext, writer:PrintWriter)
-}
-case class StringChunk(content:String) extends PageChunk{
-  def write(context:PageContext, writer:PrintWriter){
-    writer.print(content)
+case class TagDescriptor(namespace:String, tags:Seq[Tag])
+
+abstract class Tag(fName:String){
+  def name:String = fName
+
+  implicit def nodePimp(node:Node)=new{
+    def attributeAsText(key:String):Option[String]=node.attribute(key).map(_.text)
   }
+
+  def run(elem:Elem, context:CompilationContext, pscope:NamespaceBinding=TopScope)
 }
 
-case class OutChunk(expression:String) extends PageChunk{
-  def write(context: PageContext, writer:PrintWriter){
-    writer.print(ExpressionCache(expression).evaluate(new PageJexlContext(context)))
-  }
-}
-
-class PageJexlContext(context:PageContext) extends JexlContext {
-  def get(name: String): AnyRef = context.attributes(name)
-
-  def set(name: String, value: AnyRef) {}
-
-  def has(name: String): Boolean = context.attributes.contains(name)
-}
-
-object ExpressionCache{
-  private[this] val engine = new JexlEngine
-
-  private[this] val expressions = scala.collection.concurrent.TrieMap[String,Expression]()
-
-  def apply(expression:String) =
-    expressions.getOrElseUpdate(expression,engine.createExpression(expression))
-}
-
-class PageCode{
+class PageCode(es:ExpressionService){
   var code: List[PageChunk] = Nil
 
   def append(chunk: PageChunk){
@@ -71,7 +59,7 @@ class PageCode{
         append(StringChunk(str.substring(0,start)))
         val end = str.indexOf("}",start)
         val expressionString = str.substring(start+2,end)
-        append(OutChunk(expressionString))
+        append(OutChunk(es,expressionString))
         pushString(str.substring(end+1))
       }else{
         append(StringChunk(str))
@@ -80,25 +68,10 @@ class PageCode{
   }
 }
 
-trait Tag{
-  def name:String
+trait Compositing extends TiramisuTags
+                  with GeneralTags
+                  with ExpressionService { self:Tiramisu=>
 
-  implicit def nodePimp(node:Node)=new{
-    def attributeAsText(key:String):Option[String]=node.attribute(key).map(_.text)
-  }
-
-  def run(elem:Elem, context:CompilationContext, pscope:NamespaceBinding=TopScope)
-}
-
-case class TagDescriptor(namespace:String, tags:Seq[Tag])
-
-class CompilationContext{
-  val attributes = mutable.Map[String,AnyRef]()
-  var template:Option[String] = None
-  val pageCode = new PageCode
-}
-
-trait Compositing { self:Tiramisu=>
   def tiraviewPrefix = "/WEB-INF/tiraview/"
   def tiraviewSuffix = ".xhtml"
 
@@ -128,7 +101,7 @@ trait Compositing { self:Tiramisu=>
     print(sb)
   }
 
-  private def writeElem(el:Elem, context:CompilationContext, pscope:NamespaceBinding = TopScope){
+  def writeElem(el:Elem, context:CompilationContext, pscope:NamespaceBinding = TopScope){
     writeElemStart(el, context, pscope)
     for (child<-el.child){
       processTags(child,context,el.scope)
@@ -171,87 +144,8 @@ trait Compositing { self:Tiramisu=>
       )
   }
 
-  val tComposite = new Tag{
-    def name = "composite"
-
-    def run(elem: Elem, context: CompilationContext,pscope:NamespaceBinding=TopScope){
-      for (template<-context.template){
-        val xml = loadXml(template)
-        if (!context.attributes.contains("dtd"))
-          context.attributes.put("dtd",xml.dtd)
-        context.attributes.put("currentPage",elem)
-        processTags(xml.docElem, context, pscope)
-      }
-      if (context.template==None){
-        writeElem(elem, context, pscope)
-      }
-    }
-  }
-
-  val tContent = new Tag{
-    def name = "content"
-
-    def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
-      val page = context.attributes("currentPage").asInstanceOf[Elem]
-      // TODO: bug here, what if no override specified
-      val data = (for (dataItem <- page \\ "data"
-                       if (dataItem.namespace == elem.namespace)
-                         && (dataItem.attributeAsText("name")==elem.attributeAsText("name"))
-      ) yield dataItem).head
-      import context.pageCode._
-      for (name<-elem.attributeAsText("name")){
-        print("<t:content name='"+name+"'>")
-      }
-      data match {
-        case someElem:Elem => for (el<-someElem.child) processTags(el,context,someElem.scope)
-        case _ => for (el<-elem.child) processTags(el,context,elem.scope)
-      }
-      for (name<-elem.attributeAsText("name")){
-        print("</t:content>")
-      }
-    }
-  }
-
-  val tOut = new Tag{
-    def name = "out"
-
-    def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
-      val expressionText = elem.attributeAsText("value").getOrElse("");
-      context.pageCode.append(OutChunk(expressionText))
-    }
-  }
-
-  val tFor = new Tag{
-    def name = "for"
-
-    case class ForChunk(variable:String, expression:String, body:Iterable[PageChunk]) extends PageChunk{
-      def write(context: PageContext, writer:PrintWriter){
-        val oldValue = context.attributes.get(variable)
-        val list = ExpressionCache(expression).evaluate(
-          new PageJexlContext(context)).asInstanceOf[Wrappers.SeqWrapper[AnyRef]]
-        for (i<-list){
-          context.attributes.put(variable,i)
-          for (bodyItem<-body){
-            bodyItem.write(context, writer)
-          }
-        }
-        oldValue match {
-          case Some(old)=>context.attributes.put(variable,old)
-          case None => context.attributes.remove(variable)
-        }
-      }
-    }
-
-    def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
-      val itemsText = elem.attributeAsText("items").getOrElse("");
-      val varText = elem.attributeAsText("var").getOrElse("");
-      val body = doBody(elem, context)
-      context.pageCode.append(ForChunk(varText, itemsText, body))
-    }
-  }
-
   def doBody(elem:Elem, context:CompilationContext) = {
-    val compilationContext = new CompilationContext
+    val compilationContext = new CompilationContext(this)
     compilationContext.attributes ++= context.attributes
     for (el<-elem.child){
       processTags(el, compilationContext, elem.scope)
@@ -261,94 +155,17 @@ trait Compositing { self:Tiramisu=>
     compilationContext.pageCode.code.reverse
   }
 
-  val genericA = new Tag{
-    def name = "a"
-
-    def buildPath(href:String)={
-      val pureHref = {
-        val pos = href.indexOf('?')
-        if (pos!= -1) href.substring(0,pos) else href
-      }
-      val stringPath =  pureHref.split('/')
-      if (stringPath(0)=="")
-        stringPath.toList.tail.map(StringPathItem(_))
-      else
-        routeConfiguration.get().route.reverse.tail.reverse:::
-          stringPath.toList.filter(_!=".").map(StringPathItem(_))
-    }
-
-    def transform(elem:Elem,  pageContext:PageContext)= {
-      val newClass = {
-        elem.attributeAsText("class") match {
-          case Some(value)=>value+" tiramisu-ajax-link";
-          case None => "tiramisu-ajax-link"
-        }
-      }
-      val md = new UnprefixedAttribute("class",newClass,Null)
-      val thisTemplate = routeConfiguration.get().template
-      val path = buildPath(elem.attributeAsText("href").get)
-      val thatTemplate = routes.traverseDynamic(path).flatMap(_.configuration.template)
-      val newElem = if (thisTemplate!=None && thisTemplate==thatTemplate)
-        elem.copy(attributes=elem.attributes.append(md) )
-      else
-        elem
-      newElem
-    }
-
-    def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding){
-      def processA(pageContext:PageContext, writer:PrintWriter):List[PageChunk]={
-        val newElem = transform(elem, pageContext)
-        val cc = new CompilationContext
-        cc.attributes ++= context.attributes
-        writeElem(newElem, cc, pscope)
-        cc.pageCode.code.reverse
-      }
-      
-      context.pageCode.append(processA _)
-    }
-
-  }
-
-  val tResources = new Tag{
-    def name = "resources"
-
-    def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding) = {
-      import context.pageCode._
-      for (value <- elem.attributeAsText("value")){
-        val resourceNames = value.split(",").filter(!_.isEmpty)
-        for (resourceName<-resourceNames;
-             resource<-resourcesMap.get(resourceName)){
-            print(resource.resource(None)+"\n")
-        }
-      }
-    }
-  }
-
-  trait ComputedChunk extends PageChunk{
-    def compute(context:PageContext, writer:PrintWriter):List[PageChunk]
-
-    def write(context: PageContext, writer: PrintWriter) = {
-      val result = compute(context, writer)
-      for (item<-result){
-        item.write(context, writer)
-      }
-    }
-  }
-
   implicit def func2cc(f:(PageContext, PrintWriter)=>List[PageChunk]) = new ComputedChunk {
     def compute(context: PageContext, writer: PrintWriter) = f(context,writer)
   }
 
-  val descriptors = toDescriptorMap(
-    TagDescriptor("http://tiramisu.org/dev-0", List(tComposite,tContent,tOut,tFor,tResources)),
-    TagDescriptor(null, List(genericA))
-  )
+  val descriptors = toDescriptorMap(tiramisuTags, generalTags)
 
   class Page(fCode:List[PageChunk]){
     var dtd:DTD = null
-    
+
     val code = fCode
-    
+
     def write(pageContext:PageContext){
       if (dtd!=null){
         out.println(
@@ -368,7 +185,7 @@ trait Compositing { self:Tiramisu=>
 
   def loadPage(key:PageCacheKey):Page=loadedPages.getOrElseUpdate(key,{
     val pageXml = loadXml(key.pageName)
-    val compilationContext = new CompilationContext
+    val compilationContext = new CompilationContext(this)
     compilationContext.template = key.template
     processTags(pageXml.docElem, compilationContext)
     val page = new Page(compilationContext.pageCode.code.reverse)
