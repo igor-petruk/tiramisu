@@ -7,6 +7,7 @@ import java.io.{PrintWriter}
 import collection.{Iterable, mutable}
 import collection.JavaConversions._
 import collection.convert.Wrappers
+import annotation.tailrec
 
 trait PageContext{
   val attributes = mutable.Map[String,AnyRef]()
@@ -24,6 +25,25 @@ case class StringChunk(content:String) extends PageChunk{
   }
 }
 
+case class OutChunk(expression:Expression) extends PageChunk{
+  def write(context: PageContext, writer:PrintWriter){
+    writer.print(expression.evaluate(new PageJexlContext(context)))
+  }
+}
+
+class PageJexlContext(context:PageContext) extends JexlContext {
+  def get(name: String): AnyRef = context.attributes(name)
+
+  def set(name: String, value: AnyRef) {}
+
+  def has(name: String): Boolean = context.attributes.contains(name)
+}
+
+
+object PageCode{
+  val engine = new JexlEngine
+}
+
 class PageCode{
   var code: List[PageChunk] = Nil
 
@@ -38,7 +58,22 @@ class PageCode{
   }
 
   def print(value:Any){
-    append(StringChunk(value.toString))
+    pushString(value.toString)
+
+    @tailrec
+    def pushString(str:String){
+      val start = str.indexOf("${");
+      if (start!= -1){
+        append(StringChunk(str.substring(0,start)))
+        val end = str.indexOf("}",start)
+        val expressionString = str.substring(start+2,end)
+        val expression = PageCode.engine.createExpression(expressionString);
+        append(OutChunk(expression))
+        pushString(str.substring(end+1))
+      }else{
+        append(StringChunk(str))
+      }
+    }
   }
 }
 
@@ -174,24 +209,10 @@ trait Compositing { self:Tiramisu=>
     }
   }
 
-  class PageJexlContext(context:PageContext) extends JexlContext {
-    def get(name: String): AnyRef = context.attributes(name)
-
-    def set(name: String, value: AnyRef) {}
-
-    def has(name: String): Boolean = context.attributes.contains(name)
-  }
-
   val tOut = new Tag{
     def name = "out"
     val engine = new JexlEngine
 
-    case class OutChunk(expression:Expression) extends PageChunk{
-      def write(context: PageContext, writer:PrintWriter){
-        writer.print(expression.evaluate(new PageJexlContext(context)))
-      }
-    }
-    
     def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
       val expressionText = elem.attributeAsText("value").getOrElse("");
       val expression = engine.createExpression(expressionText);
