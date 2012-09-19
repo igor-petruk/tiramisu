@@ -25,9 +25,9 @@ case class StringChunk(content:String) extends PageChunk{
   }
 }
 
-case class OutChunk(expression:Expression) extends PageChunk{
+case class OutChunk(expression:String) extends PageChunk{
   def write(context: PageContext, writer:PrintWriter){
-    writer.print(expression.evaluate(new PageJexlContext(context)))
+    writer.print(ExpressionCache(expression).evaluate(new PageJexlContext(context)))
   }
 }
 
@@ -39,9 +39,13 @@ class PageJexlContext(context:PageContext) extends JexlContext {
   def has(name: String): Boolean = context.attributes.contains(name)
 }
 
+object ExpressionCache{
+  private[this] val engine = new JexlEngine
 
-object PageCode{
-  val engine = new JexlEngine
+  private[this] val expressions = scala.collection.concurrent.TrieMap[String,Expression]()
+
+  def apply(expression:String) =
+    expressions.getOrElseUpdate(expression,engine.createExpression(expression))
 }
 
 class PageCode{
@@ -67,8 +71,7 @@ class PageCode{
         append(StringChunk(str.substring(0,start)))
         val end = str.indexOf("}",start)
         val expressionString = str.substring(start+2,end)
-        val expression = PageCode.engine.createExpression(expressionString);
-        append(OutChunk(expression))
+        append(OutChunk(expressionString))
         pushString(str.substring(end+1))
       }else{
         append(StringChunk(str))
@@ -211,23 +214,21 @@ trait Compositing { self:Tiramisu=>
 
   val tOut = new Tag{
     def name = "out"
-    val engine = new JexlEngine
 
     def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
       val expressionText = elem.attributeAsText("value").getOrElse("");
-      val expression = engine.createExpression(expressionText);
-      context.pageCode.append(OutChunk(expression))
+      context.pageCode.append(OutChunk(expressionText))
     }
   }
 
   val tFor = new Tag{
     def name = "for"
-    val engine = new JexlEngine
 
-    case class ForChunk(variable:String, expression:Expression, body:Iterable[PageChunk]) extends PageChunk{
+    case class ForChunk(variable:String, expression:String, body:Iterable[PageChunk]) extends PageChunk{
       def write(context: PageContext, writer:PrintWriter){
         val oldValue = context.attributes.get(variable)
-        val list = expression.evaluate(new PageJexlContext(context)).asInstanceOf[Wrappers.SeqWrapper[AnyRef]]
+        val list = ExpressionCache(expression).evaluate(
+          new PageJexlContext(context)).asInstanceOf[Wrappers.SeqWrapper[AnyRef]]
         for (i<-list){
           context.attributes.put(variable,i)
           for (bodyItem<-body){
@@ -244,16 +245,20 @@ trait Compositing { self:Tiramisu=>
     def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
       val itemsText = elem.attributeAsText("items").getOrElse("");
       val varText = elem.attributeAsText("var").getOrElse("");
-      val itemsExpression = engine.createExpression(itemsText);
-      val compilationContext = new CompilationContext
-      compilationContext.attributes ++= context.attributes
-      for (el<-elem.child){
-        processTags(el, compilationContext, elem.scope)
-      }
-      context.attributes.clear
-      context.attributes ++= compilationContext.attributes
-      context.pageCode.append(ForChunk(varText, itemsExpression, compilationContext.pageCode.code.reverse))
+      val body = doBody(elem, context)
+      context.pageCode.append(ForChunk(varText, itemsText, body))
     }
+  }
+
+  def doBody(elem:Elem, context:CompilationContext) = {
+    val compilationContext = new CompilationContext
+    compilationContext.attributes ++= context.attributes
+    for (el<-elem.child){
+      processTags(el, compilationContext, elem.scope)
+    }
+    context.attributes.clear
+    context.attributes ++= compilationContext.attributes
+    compilationContext.pageCode.code.reverse
   }
 
   val genericA = new Tag{
@@ -271,36 +276,35 @@ trait Compositing { self:Tiramisu=>
         routeConfiguration.get().route.reverse.tail.reverse:::
           stringPath.toList.filter(_!=".").map(StringPathItem(_))
     }
-    
-    def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding){
 
-      val compilationContext = new CompilationContext
-      compilationContext.attributes ++= context.attributes
-      for (el<-elem.child){
-        processTags(el, compilationContext, elem.scope)
-      }
-      context.attributes.clear
-      context.attributes ++= compilationContext.attributes
-      val body = compilationContext.pageCode.code.reverse
-      val wc = WrappedChunk(elem, body, elem.scope, {(el, pageContext)=>
-        val newClass = {
-          elem.attributeAsText("class") match {
-            case Some(value)=>value+" tiramisu-ajax-link";
-            case None => "tiramisu-ajax-link"
-          }
+    def transform(elem:Elem,  pageContext:PageContext)= {
+      val newClass = {
+        elem.attributeAsText("class") match {
+          case Some(value)=>value+" tiramisu-ajax-link";
+          case None => "tiramisu-ajax-link"
         }
-        val md = new UnprefixedAttribute("class",newClass,Null)
-        val thisTemplate = routeConfiguration.get().template
-        val path = buildPath(elem.attributeAsText("href").get)
-        val thatTemplate = routes.traverseDynamic(path).flatMap(_.configuration.template)
-        val newElem = if (thisTemplate!=None && thisTemplate==thatTemplate)
-          elem.copy(attributes=elem.attributes.append(md) )
-        else
-          elem
-        newElem
-      })
+      }
+      val md = new UnprefixedAttribute("class",newClass,Null)
+      val thisTemplate = routeConfiguration.get().template
+      val path = buildPath(elem.attributeAsText("href").get)
+      val thatTemplate = routes.traverseDynamic(path).flatMap(_.configuration.template)
+      val newElem = if (thisTemplate!=None && thisTemplate==thatTemplate)
+        elem.copy(attributes=elem.attributes.append(md) )
+      else
+        elem
+      newElem
+    }
 
-      context.pageCode.append(wc)
+    def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding){
+      def processA(pageContext:PageContext, writer:PrintWriter):List[PageChunk]={
+        val newElem = transform(elem, pageContext)
+        val cc = new CompilationContext
+        cc.attributes ++= context.attributes
+        writeElem(newElem, cc, pscope)
+        cc.pageCode.code.reverse
+      }
+      
+      context.pageCode.append(processA _)
     }
 
   }
@@ -320,30 +324,19 @@ trait Compositing { self:Tiramisu=>
     }
   }
 
-  case class WrappedChunk(elem:Elem,
-                          body:Iterable[PageChunk],
-                          pscope:NamespaceBinding,
-                          transform:(Elem, PageContext)=>Elem) extends PageChunk{
-    def write(context: PageContext, writer:PrintWriter){
-      val newElem = transform(elem, context)
-      val sb = new StringBuilder
-      sb.append('<')
-      newElem.nameToString(sb)
-      if (newElem.attributes ne null) newElem.attributes.buildString(sb)
-      newElem.scope.buildString(sb, pscope)
-      sb.append('>')
-      writer.print(sb)
+  trait ComputedChunk extends PageChunk{
+    def compute(context:PageContext, writer:PrintWriter):List[PageChunk]
 
-      for (bodyItem<-body){
-        bodyItem.write(context, writer)
+    def write(context: PageContext, writer: PrintWriter) = {
+      val result = compute(context, writer)
+      for (item<-result){
+        item.write(context, writer)
       }
-
-      sb.clear()
-      sb.append("</")
-      newElem.nameToString(sb)
-      sb.append('>')
-      writer.print(sb)
     }
+  }
+
+  implicit def func2cc(f:(PageContext, PrintWriter)=>List[PageChunk]) = new ComputedChunk {
+    def compute(context: PageContext, writer: PrintWriter) = f(context,writer)
   }
 
   val descriptors = toDescriptorMap(
