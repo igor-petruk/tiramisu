@@ -144,6 +144,9 @@ trait Compositing { self:Tiramisu=>
         context.attributes.put("currentPage",elem)
         processTags(xml.docElem, context, pscope)
       }
+      if (context.template==None){
+        writeElem(elem, context, pscope)
+      }
     }
   }
 
@@ -377,6 +380,7 @@ trait Compositing { self:Tiramisu=>
   }
 
   def compose(key:PageCacheKey, params:AnyRef*){
+    val effectiveKey = if (noTemplateRequest) key.copy(template = None) else key
     val map = (for (value<-params) yield
       value match {
         case (key:String, data:AnyRef)=> (key->convertInput(data))
@@ -389,7 +393,7 @@ trait Compositing { self:Tiramisu=>
       val route = routeConfiguration.get().route
     }
     pageContext.attributes ++= map
-    val page = loadPage(key)
+    val page = loadPage(effectiveKey)
     page.write(pageContext)
   }
 
