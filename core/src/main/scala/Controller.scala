@@ -19,11 +19,14 @@ trait Controller extends Compositing{
 
   var routes = new RoutesTree
 
+  var filterConfig:FilterConfig = _
+
   def addRoute(newRoute:List[PathItem], handler:RouteHandler){
     routes.add(newRoute, handler)
   }
 
   def init(filterConfig: FilterConfig) {
+	this.filterConfig = filterConfig
   }
 
   def doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {

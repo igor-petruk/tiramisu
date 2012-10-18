@@ -7,13 +7,14 @@ import java.io.{PrintWriter}
 import collection.{Iterable, mutable}
 import collection.JavaConversions._
 import collection.convert.Wrappers
+import javax.servlet.Servlet
 import annotation.tailrec
 
 class CompilationContext(es:ExpressionService){
   val attributes = mutable.Map[String,AnyRef]()
   var template:Option[String] = None
   val pageCode = new PageCode(es)
-
+	
   def expressionService = es
 }
 
@@ -68,8 +69,10 @@ class PageCode(es:ExpressionService){
   }
 }
 
+// test
+
 trait Compositing extends TiramisuTags
-                  with GeneralTags
+				  with GeneralTags
                   with ExpressionService { self:Tiramisu=>
 
   def tiraviewPrefix = "/WEB-INF/tiraview/"
@@ -130,7 +133,8 @@ trait Compositing extends TiramisuTags
 
   def loadXml(name:String):Document=loadedXmls.getOrElseUpdate(name,{
    val xmlResourse = tiraviewPrefix+name+tiraviewSuffix;
-    val parser = scala.xml.parsing.ConstructingParser.fromSource(io.Source.fromURL(getClass.getResource(xmlResourse)), true)
+   println(xmlResourse);
+    val parser = scala.xml.parsing.ConstructingParser.fromSource(io.Source.fromInputStream(filterConfig.getServletContext().getResourceAsStream(xmlResourse)), true)
     val doc = parser.document()
     doc
   })
