@@ -2,12 +2,8 @@ package org.tiramisu.util
 
 import scala.collection.mutable._
 import annotation.tailrec
-import org.tiramisu.StringPathItem._
-import org.tiramisu.TypedPathItem._
 import org.tiramisu.{TypedPathItem, StringPathItem, RouteHandler, PathItem}
-import java.nio.channels.FileChannel
 import java.io.{InputStream, OutputStream}
-import collection.TraversableLike
 
 class Tree[K, V] {
 

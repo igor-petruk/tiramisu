@@ -15,7 +15,8 @@ trait Controller extends Compositing{
   val responseObject = new ThreadLocal[HttpServletResponse]
   val routeConfiguration = new ThreadLocal[RouteConfiguration]
 
-  def noTemplateRequest = request.getHeader("X-Tiramisu-Template")=="false"
+//  def noTemplateRequest = request.getHeader("X-Tiramisu-Template")=="false"
+  def noTemplateRequest = request.getParameter("tiramisuajax")=="1"
 
   var routes = new RoutesTree
 

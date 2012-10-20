@@ -4,6 +4,8 @@ import scala.xml.NodeSeq
 
 import org.tiramisu.providers._
 import org.tiramisu.util.IO._
+import serve.ServeAnchor
+import org.apache.commons.io.IOUtils
 
 trait ResourceProvider {
   def resource(version: Option[String]): NodeSeq
@@ -13,11 +15,11 @@ trait ResourceProvider {
 
 trait Resources { self: Controller =>
   val servePrefix = "tiramisuServe"
-  val resourcePrefix = "/serve"
+  val resourcePrefix = ""
   
   route /servePrefix/string -> {resourceName=>
-    for (resource<-getClass.getResourceAsStream(resourcePrefix+"/"+resourceName)){
-      copy(resource, response.getOutputStream)
+    for (resource<-classOf[ServeAnchor].getResourceAsStream(resourceName)){
+      IOUtils.copy(resource, response.getOutputStream)
     }
   }
   

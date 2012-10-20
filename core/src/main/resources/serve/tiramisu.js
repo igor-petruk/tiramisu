@@ -1,9 +1,6 @@
 function loadPage(href){
-    var result = $.ajax( href,{
-        dataType: "html",
-        headers: {
-            "X-Tiramisu-Template": "false"
-        }
+    var result = $.ajax( href+"?tiramisuajax=1",{
+        dataType: "html"
     } )
         .done(function(data) {
             $("t\\:data",data).each(function(i,val){
