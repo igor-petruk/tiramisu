@@ -28,9 +28,7 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
   def traverse(path:List[String])= traverseMe (path, this)
 
   def traverseDynamic(path:List[PathItem])= {
-    println("----------------"+path)
     val k = traverseMeDyn (path, Nil,this)
-    println("-----------------------"+k)
     k
   }
 
