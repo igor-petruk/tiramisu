@@ -27,18 +27,26 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
 
   def traverse(path:List[String])= traverseMe (path, this)
 
-  def traverseDynamic(path:List[PathItem])= traverseMeDyn (path, this)
+  def traverseDynamic(path:List[PathItem])= {
+    println("----------------"+path)
+    val k = traverseMeDyn (path, Nil,this)
+    println("-----------------------"+k)
+    k
+  }
 
   @tailrec
-  private def traverseMeDyn(path:List[PathItem], routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
+  private def traverseMeDyn(path:List[PathItem], traversedPath:List[Tree[PathItem, RouteHandler]],
+                            routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
     // TODO: bad bug may be hidden here, also no support for ..
+    println(path+" "+traversedPath+" "+routesTree.children.keys+" "+routesTree.value)
     path match{
-      case Nil=>Option(routesTree.value)
+      case Nil=>Option(routesTree.value).orElse(routesTree.children.get(StringPathItem.trailingSlash).map(_.value))
+      case StringPathItem("..")::tail => traverseMeDyn(tail, traversedPath.tail, traversedPath.head)
       case head::tail => {
         routesTree.children.get(head) match {
-          case Some(foundRoute) => traverseMeDyn(tail, foundRoute)
+          case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath, foundRoute)
           case None => routesTree.children.get(TypedPathItem[AnyRef]()) match {
-            case Some(foundRoute) => traverseMeDyn(tail, foundRoute)
+            case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath,foundRoute)
             case None => None
           }
         }

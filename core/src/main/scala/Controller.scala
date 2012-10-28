@@ -33,8 +33,9 @@ trait Controller extends Compositing{
   def doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
     val req = request.asInstanceOf[HttpServletRequest]
     val stringPath = {
-      val split = req.getServletPath.split("/").toList.tail
-      if (req.getServletPath.endsWith("/"))
+      val path = req.getServletPath
+      val split = if (path=="/") List() else req.getServletPath.split("/").toList.tail
+      if (path!="/" && req.getServletPath.endsWith("/"))
         split:::""::Nil
       else
         split

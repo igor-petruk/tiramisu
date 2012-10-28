@@ -13,6 +13,10 @@ case class TypedPathItem[T:ClassTag](optioned:Class[_]=null) extends PathItem{
   override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType+"/"+optioned)
 }
 
+object StringPathItem{
+  val trailingSlash = StringPathItem("")
+}
+
 case class RouteConfiguration(template:Option[String]=None, route:List[PathItem]=Nil)
 
 case class RouteHandler(f:HttpServletRequest=>Unit, configuration:RouteConfiguration)
