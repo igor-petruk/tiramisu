@@ -36,7 +36,6 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
   private def traverseMeDyn(path:List[PathItem], traversedPath:List[Tree[PathItem, RouteHandler]],
                             routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
     // TODO: bad bug may be hidden here, also no support for ..
-    println(path+" "+traversedPath+" "+routesTree.children.keys+" "+routesTree.value)
     path match{
       case Nil=>Option(routesTree.value).orElse(routesTree.children.get(StringPathItem.trailingSlash).map(_.value))
       case StringPathItem("..")::tail => traverseMeDyn(tail, traversedPath.tail, traversedPath.head)
