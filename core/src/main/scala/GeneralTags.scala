@@ -6,7 +6,7 @@ import java.io.PrintWriter
 trait GeneralTags {
   self: Tiramisu =>
 
-  val generalTags = TagDescriptor(null, List(new GenericA))
+  val generalTags = TagDescriptor(null, List())
 
   class GenericA extends Tag("a") {
     def buildPath(href: String) = {

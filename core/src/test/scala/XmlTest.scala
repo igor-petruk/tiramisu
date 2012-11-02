@@ -4,7 +4,7 @@ import org.junit.Test
 import xml.NodeSeq._
 import xml.{TopScope, NodeSeq, Elem, Node}
 
-trait Tag{
+trait Tag2{
   def name:String
   
   implicit def nodePimp(node:Node)=new{

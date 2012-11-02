@@ -4,17 +4,18 @@ import xml._
 import dtd.{DTD}
 import org.apache.commons.jexl2.{JexlContext, JexlEngine, Expression}
 import java.io.{PrintWriter}
-import collection.{Iterable, mutable}
+import collection.{immutable, Iterable, mutable}
 import collection.JavaConversions._
 import collection.convert.Wrappers
 import javax.servlet.Servlet
 import annotation.tailrec
+import org.slf4j.LoggerFactory
 
 class CompilationContext(es:ExpressionService){
   val attributes = mutable.Map[String,AnyRef]()
   var template:Option[String] = None
   val pageCode = new PageCode(es)
-	
+	var dataScope = immutable.Map[String,Node]()
   def expressionService = es
 }
 
@@ -28,6 +29,8 @@ case class PageCacheKey(pageName:String, template:Option[String])
 case class TagDescriptor(namespace:String, tags:Seq[Tag])
 
 abstract class Tag(fName:String){
+  protected val logger = LoggerFactory.getLogger(this.getClass)
+
   def name:String = fName
 
   implicit def nodePimp(node:Node)=new{
@@ -72,8 +75,9 @@ class PageCode(es:ExpressionService){
 // test
 
 trait Compositing extends TiramisuTags
-				  with GeneralTags
+				          with GeneralTags
                   with ExpressionService { self:Tiramisu=>
+  private[Compositing] val logger = LoggerFactory.getLogger(classOf[Compositing])
 
   def tiraviewPrefix = "/WEB-INF/tiraview/"
   def tiraviewSuffix = ".xhtml"
@@ -90,8 +94,10 @@ trait Compositing extends TiramisuTags
     sb.append('<')
     el.nameToString(sb)
     if (el.attributes ne null) el.attributes.buildString(sb)
+    if (el.scope!=pscope)
     el.scope.buildString(sb, pscope)
     sb.append('>')
+    logger.debug("Written {} start scope({}) pscope=({}) {}",el,el.scope, pscope,sb)
     print(sb)
   }
 
@@ -102,6 +108,7 @@ trait Compositing extends TiramisuTags
     el.nameToString(sb)
     sb.append('>')
     print(sb)
+    logger.debug("Written {} end pscope=({}) {}",Array(el,pscope,sb):_*)
   }
 
   def writeElem(el:Elem, context:CompilationContext, pscope:NamespaceBinding = TopScope){
@@ -116,15 +123,22 @@ trait Compositing extends TiramisuTags
     import context.pageCode._
     node match {
       case taggedElem:Elem =>{
-        descriptors(taggedElem.namespace).get(taggedElem.label) match {
-          case Some(descriptor) =>  {
-            descriptor.run(taggedElem, context)
-          }
+        val tags = descriptors.get(taggedElem.namespace)
+        tags match {
+          case Some(tagMap) => descriptors(taggedElem.namespace).get(taggedElem.label) match {
+              case Some(descriptor) =>  {
+                descriptor.run(taggedElem, context,pscope)
+              }
+              case _ => writeElem(taggedElem, context, pscope) //sys.error("No tag "+taggedElem.label)
+            }
           case _ => writeElem(taggedElem, context, pscope) //sys.error("No tag "+taggedElem.label)
         }
       }
       case s: SpecialNode               => print(s buildString new StringBuilder)
-      case g: Group                     => for (c <- g.nodes) processTags(c,context, g.scope)
+      case g: Group                     => {
+        logger.debug("GROUP {}/{}",Array(g,g.scope):_*)
+        for (c <- g.nodes) processTags(c,context, pscope)
+      }
       case _ => throw new IllegalArgumentException("Don't know how to serialize a " + node.getClass.getName)
     }
   }
@@ -133,7 +147,7 @@ trait Compositing extends TiramisuTags
 
   def loadXml(name:String):Document=loadedXmls.getOrElseUpdate(name,{
    val xmlResourse = tiraviewPrefix+name+tiraviewSuffix;
-   println(xmlResourse);
+   logger.debug("Loading: {}",xmlResourse);
     val parser = scala.xml.parsing.ConstructingParser.fromSource(io.Source.fromInputStream(filterConfig.getServletContext().getResourceAsStream(xmlResourse)), true)
     val doc = parser.document()
     doc
@@ -148,11 +162,11 @@ trait Compositing extends TiramisuTags
       )
   }
 
-  def doBody(elem:Elem, context:CompilationContext) = {
+  def doBody(elem:Elem, context:CompilationContext, pscope:NamespaceBinding) = {
     val compilationContext = new CompilationContext(this)
     compilationContext.attributes ++= context.attributes
     for (el<-elem.child){
-      processTags(el, compilationContext, elem.scope)
+      processTags(el, compilationContext, pscope)
     }
     context.attributes.clear
     context.attributes ++= compilationContext.attributes

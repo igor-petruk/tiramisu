@@ -1,10 +1,12 @@
 package org.tiramisu
 
-import xml.{TopScope, NamespaceBinding, Elem}
+import xml._
 import collection.convert.Wrappers
 import collection.{Iterable}
 import java.io.PrintWriter
 import collection.JavaConversions._
+import xml.NamespaceBinding
+import scala.Some
 
 case class ForChunk(es:ExpressionService, variable:String, expression:String, body:Iterable[PageChunk]) extends PageChunk{
   def write(context: PageContext, writer:PrintWriter){
@@ -26,48 +28,40 @@ case class ForChunk(es:ExpressionService, variable:String, expression:String, bo
 
 trait TiramisuTags {self: Compositing with Resources =>
   val tiramisuTags = TagDescriptor("http://tiramisu.org/dev-0",
-    List(new TComposite,
-      new TContent,
-      new TOut,
+    List(new TOut,
       new TFor,
-      new TResources)
+      new TResources,
+      new TUse,
+      new TInsert
+    )
     )
 
-  class TComposite extends Tag("composite"){
+    class TInsert extends Tag("insert"){
 
-    def run(elem: Elem, context: CompilationContext,pscope:NamespaceBinding=TopScope){
-      for (template<-context.template){
-        val xml = loadXml(template)
-        if (!context.attributes.contains("dtd"))
-          context.attributes.put("dtd",xml.dtd)
-        context.attributes.put("currentPage",elem)
-        processTags(xml.docElem, context, pscope)
-      }
-      if (context.template==None){
-        writeElem(elem, context, pscope)
+      def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding) {
+        this.logger.debug("INSERT {}/{}",Array(elem,pscope):_*)
+        val data = elem.attributeAsText("name").map(context.dataScope(_))
+        for (dataElem<-data){
+          processTags(dataElem, context, pscope)
+        }
       }
     }
-  }
 
-  class TContent extends Tag("content"){
-    def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
-      val page = context.attributes("currentPage").asInstanceOf[Elem]
-      // TODO: bug here, what if no override specified
-      val data = (for (dataItem <- page \\ "data"
-                       if (dataItem.namespace == elem.namespace)
-                         && (dataItem.attributeAsText("name")==elem.attributeAsText("name"))
-      ) yield dataItem).head
-      import context.pageCode._
-      for (name<-elem.attributeAsText("name")){
-        print("<t:content name='"+name+"'>")
-      }
-      data match {
-        case someElem:Elem => for (el<-someElem.child) processTags(el,context,someElem.scope)
-        case _ => for (el<-elem.child) processTags(el,context,elem.scope)
-      }
-      for (name<-elem.attributeAsText("name")){
-        print("</t:content>")
-      }
+    class TUse extends Tag("use"){
+    def run(elem: Elem, context: CompilationContext, pscope: NamespaceBinding) {
+      this.logger.debug("USE {}/{}",Array(elem,pscope):_*)
+      val oldData = context.dataScope
+      val data = for (item <- elem \\ "data" if (item.namespace == elem.namespace)) yield item
+      context.dataScope ++= data.map{item=>(item.attributeAsText("name").get,Group(item.child))}.toMap
+
+      val xml = loadXml(elem.attributeAsText("component").get)
+      if (!context.attributes.contains("dtd"))
+        context.attributes.put("dtd",xml.dtd)
+      context.attributes.put("currentPage",elem)
+      for(node<-xml.docElem.child)
+      processTags(node, context,xml.docElem.scope)
+
+      context.dataScope = oldData
     }
   }
 
@@ -80,9 +74,10 @@ trait TiramisuTags {self: Compositing with Resources =>
 
   class TFor extends Tag("for"){
     def run(elem: Elem, context: CompilationContext, pscope:NamespaceBinding=TopScope){
+      this.logger.debug("FOR {}/{}",Array(elem,pscope):_*)
       val itemsText = elem.attributeAsText("items").getOrElse("");
       val varText = elem.attributeAsText("var").getOrElse("");
-      val body = doBody(elem, context)
+      val body = doBody(elem, context, pscope)
       context.pageCode.append(ForChunk(context.expressionService,varText, itemsText, body))
     }
   }
