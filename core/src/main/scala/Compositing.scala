@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory
 
 class CompilationContext(es:ExpressionService){
   val attributes = mutable.Map[String,AnyRef]()
-  var template:Option[String] = None
   val pageCode = new PageCode(es)
 	var dataScope = immutable.Map[String,Node]()
   def expressionService = es
@@ -24,7 +23,7 @@ trait PageContext{
   val route: List[PathItem]
 }
 
-case class PageCacheKey(pageName:String, template:Option[String])
+case class PageCacheKey(pageName:String)
 
 case class TagDescriptor(namespace:String, tags:Seq[Tag])
 
@@ -83,7 +82,7 @@ trait Compositing extends TiramisuTags
   def tiraviewSuffix = ".xhtml"
 
   implicit def stringPimp(s:String) = new {
-    def withTemplate(template:String) = PageCacheKey(s,Some(template))
+
   }
 
   var syntacticScopeConfiguration = RouteConfiguration()
@@ -204,11 +203,14 @@ trait Compositing extends TiramisuTags
   def loadPage(key:PageCacheKey):Page=loadedPages.getOrElseUpdate(key,{
     val pageXml = loadXml(key.pageName)
     val compilationContext = new CompilationContext(this)
-    compilationContext.template = key.template
     processTags(pageXml.docElem, compilationContext)
     val page = new Page(compilationContext.pageCode.code.reverse)
-    for (dtdRef <- compilationContext.attributes.get("dtd")){
-      page.dtd = dtdRef.asInstanceOf[DTD]
+    compilationContext.attributes.get("dtd") match {
+      case Some(dtdRef)=>page.dtd = dtdRef.asInstanceOf[DTD]
+      case None => page.dtd = pageXml.dtd
+    }
+    for (dtd<-Option(page.dtd)){
+      logger.debug("Found DTD {}",dtd)
     }
     page
   })
@@ -229,7 +231,7 @@ trait Compositing extends TiramisuTags
   }
 
   def compose(key:PageCacheKey, params:AnyRef*){
-    val effectiveKey = if (noTemplateRequest) key.copy(template = None) else key
+    val effectiveKey = key
     val map = (for (value<-params) yield
       value match {
         case (key:String, data:AnyRef)=> (key->convertInput(data))
@@ -247,6 +249,6 @@ trait Compositing extends TiramisuTags
   }
 
   def compose(pageName:String, params:AnyRef*){
-    compose(PageCacheKey(pageName, routeConfiguration.get.template), params:_*)
+    compose(PageCacheKey(pageName), params:_*)
   }
 }

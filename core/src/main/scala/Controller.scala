@@ -20,15 +20,12 @@ trait JSP{ self:Controller =>
   }
 }
 
-trait Controller extends Compositing{
+trait Controller extends Compositing with EntityProvision{
   self:Tiramisu =>
 
   val requestObject = new ThreadLocal[HttpServletRequest]
   val responseObject = new ThreadLocal[HttpServletResponse]
   val routeConfiguration = new ThreadLocal[RouteConfiguration]
-
-//  def noTemplateRequest = request.getHeader("X-Tiramisu-Template")=="false"
-  def noTemplateRequest = request.getParameter("tiramisuajax")=="1"
 
   var routes = new RoutesTree
 
@@ -78,10 +75,6 @@ trait Controller extends Compositing{
     route.servlet = this
     route
   }
-  val int = TypedPathItem[Int]()
-  val string = TypedPathItem[String]()
-  implicit def c2t[T](v:Class[T])(implicit t:ClassTag[T],p:EntityProvider[T]) = TypedPathItem[T]()
-  def opt[T:ClassTag](v:Class[T])  = TypedPathItem[Option[T]](v)
 
 }
 
