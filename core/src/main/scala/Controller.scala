@@ -5,11 +5,23 @@ import javax.servlet.http.{HttpServletResponse, HttpServletRequest}
 import org.tiramisu.util.RoutesTree
 import javax.servlet.{FilterChain, ServletResponse, ServletRequest, FilterConfig}
 
-trait Controller extends Compositing{
-  self:Tiramisu =>
-
+trait JSP{ self:Controller =>
   def jspPrefix = "/WEB-INF/jsp/"
   def jspSuffix = ".jsp"
+
+  def view(jsp:String, params:AnyRef*){
+    for (value<-params){
+      value match {
+        case (key:String, data)=> request.setAttribute(key,data)
+        case other=> request.setAttribute(value.getClass.getSimpleName,value)
+      }
+    }
+    request.getRequestDispatcher(jspPrefix+jsp+jspSuffix).forward(request, response)
+  }
+}
+
+trait Controller extends Compositing{
+  self:Tiramisu =>
 
   val requestObject = new ThreadLocal[HttpServletRequest]
   val responseObject = new ThreadLocal[HttpServletResponse]
@@ -27,7 +39,7 @@ trait Controller extends Compositing{
   }
 
   def init(filterConfig: FilterConfig) {
-	this.filterConfig = filterConfig
+  	this.filterConfig = filterConfig
   }
 
   def doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {
@@ -71,16 +83,5 @@ trait Controller extends Compositing{
   implicit def c2t[T](v:Class[T])(implicit t:ClassTag[T],p:EntityProvider[T]) = TypedPathItem[T]()
   def opt[T:ClassTag](v:Class[T])  = TypedPathItem[Option[T]](v)
 
-  def view(jsp:String, params:AnyRef*){
-    for (value<-params){
-      value match {
-        case (key:String, data)=> request.setAttribute(key,data)
-        case other=> request.setAttribute(value.getClass.getSimpleName,value)
-      }
-    }
-    request.getRequestDispatcher(jspPrefix+jsp+jspSuffix).forward(request, response)
-  }
-
-  def json(any:Any){}
 }
 
