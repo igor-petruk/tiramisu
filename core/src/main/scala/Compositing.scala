@@ -172,6 +172,21 @@ trait Compositing extends TiramisuTags
     compilationContext.pageCode.code.reverse
   }
 
+  val removePreceedingSpace = true
+
+  def packCode(code:List[PageChunk])={
+    println(code)
+    if (removePreceedingSpace){
+       val charsToSkip = Set(' ','\n','\r','\t')
+       code match {
+         case StringChunk(beginning)::tail=>StringChunk(beginning.dropWhile(charsToSkip.contains(_)))::tail
+         case x=>x
+       }
+     }else{
+       code
+     }
+  }
+
   implicit def func2cc(f:(PageContext, PrintWriter)=>List[PageChunk]) = new ComputedChunk {
     def compute(context: PageContext, writer: PrintWriter) = f(context,writer)
   }
@@ -204,7 +219,8 @@ trait Compositing extends TiramisuTags
     val pageXml = loadXml(key.pageName)
     val compilationContext = new CompilationContext(this)
     processTags(pageXml.docElem, compilationContext)
-    val page = new Page(compilationContext.pageCode.code.reverse)
+    val pageCode = packCode(compilationContext.pageCode.code.reverse)
+    val page = new Page(pageCode)
     compilationContext.attributes.get("dtd") match {
       case Some(dtdRef)=>page.dtd = dtdRef.asInstanceOf[DTD]
       case None => page.dtd = pageXml.dtd
