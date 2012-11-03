@@ -17,7 +17,7 @@ object StringPathItem{
   val trailingSlash = StringPathItem("")
 }
 
-case class RouteConfiguration(template:Option[String]=None, route:List[PathItem]=Nil)
+case class RouteConfiguration(route:List[PathItem]=Nil)
 
 case class RouteHandler(f:HttpServletRequest=>Unit, configuration:RouteConfiguration)
 
@@ -37,10 +37,19 @@ trait Route {
     q
   }
 
-  def parseRequest(path: List[PathItem], request: HttpServletRequest): List[Any] = {
-    (request.getServletPath.split("/").toList.tail zip path) collect {
-      case (str, item: TypedPathItem[_]) => item.provider.provide(str)
+  object SimpleProvidedObject{
+    def unapply(input:(String,_)):Option[Any]= input match {
+      case (str,item@TypedPathItem(_)) => Option(item.provider.provide(str))
+      case _ => None
     }
+  }
+
+  def parseRequest(path: List[PathItem], request: HttpServletRequest)(handle:List[Any]=>Unit){
+    val result = (request.getServletPath.split("/").toList.tail zip path) collect {
+      case SimpleProvidedObject(item) => item
+//      case (str, item: TypedPathItem[_]) => item.provider.provide(str)
+    }
+    handle(result)
   }
 
   def addRoute(handler:HttpServletRequest=>Unit){
@@ -100,8 +109,9 @@ class Route1[T1: ClassTag] extends Route {
 
   def ->(f: T1 => Unit) {
     def handler(h: HttpServletRequest) {
-      val parsedParams = parseRequest(path, h)
-      f(parsedParams(0).asInstanceOf[T1])
+      parseRequest(path, h){parsedParams=>
+        f(parsedParams(0).asInstanceOf[T1])
+      }
     }
     addRoute(handler)
   }
@@ -115,11 +125,12 @@ class Route2[T1: ClassTag, T2: ClassTag] extends Route {
 
   def ->(f: (T1, T2) => Unit) {
     def handler(h: HttpServletRequest) {
-      val parsedParams = parseRequest(path, h)
-      f(
-        parsedParams(0).asInstanceOf[T1],
-        parsedParams(1).asInstanceOf[T2]
-      )
+      parseRequest(path, h){parsedParams=>
+        f(
+          parsedParams(0).asInstanceOf[T1],
+          parsedParams(1).asInstanceOf[T2]
+        )
+      }
     }
     addRoute(handler)
   }
@@ -133,12 +144,13 @@ class Route3[T1: ClassTag, T2: ClassTag, T3: ClassTag] extends Route {
 
   def ->(f: (T1, T2, T3) => Unit) {
     def handler(h: HttpServletRequest) {
-      val parsedParams = parseRequest(path, h)
-      f(
-        parsedParams(0).asInstanceOf[T1],
-        parsedParams(1).asInstanceOf[T2],
-        parsedParams(2).asInstanceOf[T3]
-      )
+      parseRequest(path, h){parsedParams=>
+        f(
+          parsedParams(0).asInstanceOf[T1],
+          parsedParams(1).asInstanceOf[T2],
+          parsedParams(2).asInstanceOf[T3]
+        )
+      }
     }
     addRoute(handler)
   }
@@ -149,13 +161,14 @@ class Route4[T1, T2, T3, T4] extends Route {
 
   def ->(f: (T1, T2, T3, T4) => Unit) {
     def handler(h: HttpServletRequest) {
-      val parsedParams = parseRequest(path, h)
-      f(
-        parsedParams(0).asInstanceOf[T1],
-        parsedParams(1).asInstanceOf[T2],
-        parsedParams(2).asInstanceOf[T3],
-        parsedParams(3).asInstanceOf[T4]
-      )
+      parseRequest(path, h){parsedParams=>
+        f(
+          parsedParams(0).asInstanceOf[T1],
+          parsedParams(1).asInstanceOf[T2],
+          parsedParams(2).asInstanceOf[T3],
+          parsedParams(3).asInstanceOf[T4]
+        )
+      }
     }
     addRoute(handler)
   }

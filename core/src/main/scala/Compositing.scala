@@ -239,13 +239,6 @@ trait Compositing extends TiramisuTags
     }
   }
 
-  def template(name:String)(body: =>Unit){
-    val old = syntacticScopeConfiguration
-    syntacticScopeConfiguration = old.copy(template=Some(name))
-    body;
-    syntacticScopeConfiguration = old;
-  }
-
   def compose(key:PageCacheKey, params:AnyRef*){
     val effectiveKey = key
     val map = (for (value<-params) yield
