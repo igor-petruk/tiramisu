@@ -4,13 +4,22 @@ import org.tiramisu.providers._
 
 import javax.servlet.http.HttpServletRequest
 import scala.reflect.ClassTag
+import annotation.tailrec
 
 sealed class PathItem
 case class StringPathItem(string:String) extends PathItem
-case class TypedPathItem[T:ClassTag](optioned:Class[_]=null) extends PathItem{
-  var provider:EntityProvider[T] = _
+abstract class TypedPathItem[T] extends PathItem{
+  def enclosedType
+  var provider:EntityProvider[T] = null
+}
+case class APathItem[T:ClassTag]() extends TypedPathItem[T]{
   def enclosedType = implicitly[ClassTag[T]].runtimeClass
-  override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType+"/"+optioned)
+  override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType)
+}
+case class MAPathItem[T,M[_]](implicit t: ClassTag[T], m: ClassTag[M[_]]) extends TypedPathItem[M[T]]{
+  def enclosedType = implicitly[ClassTag[T]].runtimeClass
+  def optionedType = implicitly[ClassTag[M[_]]].runtimeClass
+  override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType)
 }
 
 object StringPathItem{
@@ -38,18 +47,46 @@ trait Route {
   }
 
   object SimpleProvidedObject{
-    def unapply(input:(String,_)):Option[Any]= input match {
-      case (str,item@TypedPathItem(_)) => Option(item.provider.provide(str))
+    def unapply(input:(String,_)):Option[Option[Any]]= input match {
+      case (str,item@APathItem()) => Some(Option(item.provider.provide(str)))
       case _ => None
     }
   }
 
-  def parseRequest(path: List[PathItem], request: HttpServletRequest)(handle:List[Any]=>Unit){
-    val result = (request.getServletPath.split("/").toList.tail zip path) collect {
-      case SimpleProvidedObject(item) => item
-//      case (str, item: TypedPathItem[_]) => item.provider.provide(str)
+  object SimpleOptionedObject{
+    def unapply(input:(String,_)):Option[Option[Any]]= input match {
+      case (str,item@APathItem()) => Some(Option(item.provider.provide(str)))
+      case _ => None
     }
-    handle(result)
+  }
+
+  abstract sealed trait ResponseOutcome
+  case class ErrorPage(errorCode:Int) extends ResponseOutcome
+  case object Skip extends ResponseOutcome
+
+  def parseRequest(path: List[PathItem], request: HttpServletRequest)(handle:List[Any]=>Unit){
+    @tailrec
+    def processItem(path:List[PathItem],stringPath:List[String],params:List[Any]){
+      if (stringPath.isEmpty){
+        handle(params.reverse)
+      }else{
+        val item = (stringPath.head, path.head) match {
+          case SimpleProvidedObject(item) => item.toRight(ErrorPage(404))
+          case SimpleOptionedObject(item) => item
+          case (stringItem,StringPathItem(item)) if (stringItem==item) => Left(Skip)
+          case _ => Left(ErrorPage(404))
+        }
+        item match {
+          case Right(value) => processItem(path.tail, stringPath.tail, value::params)
+          case Left(Skip) =>  processItem(path.tail, stringPath.tail, params)
+          case Left(ErrorPage(number)) => {
+            servlet.response.sendError(number)
+          }
+        }
+      }
+    }
+
+    processItem(path, request.getServletPath.split("/").toList.tail, Nil)
   }
 
   def addRoute(handler:HttpServletRequest=>Unit){
@@ -86,8 +123,11 @@ abstract class RestResource[T](implicit provider:EntityProvider[T]) extends Rout
 class Route0 extends Route {
   def /(v: String) = setup(new Route0, this, StringPathItem(v), StringDummyProvider)
 
-  def /[T](v: TypedPathItem[T])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
+  def /[T](v: APathItem[T])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
     setup(new Route1[T], this, v, ep)
+
+/*  def /[T](v: MAPathItem[T,Option[T]])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
+    setup(new Route1[T], this, v, ep)*/
 
   def ->(f: => Unit) {
     def handler(h: HttpServletRequest) {

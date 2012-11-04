@@ -2,8 +2,10 @@ package org.tiramisu.util
 
 import scala.collection.mutable._
 import annotation.tailrec
-import org.tiramisu.{TypedPathItem, StringPathItem, RouteHandler, PathItem}
+import org.tiramisu._
 import java.io.{InputStream, OutputStream}
+import scala.Some
+import org.tiramisu.RouteHandler
 
 class Tree[K, V] {
 
@@ -42,7 +44,7 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
       case head::tail => {
         routesTree.children.get(head) match {
           case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath, foundRoute)
-          case None => routesTree.children.get(TypedPathItem[AnyRef]()) match {
+          case None => routesTree.children.get(APathItem[AnyRef]()) match {
             case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath,foundRoute)
             case None => None
           }
@@ -58,7 +60,7 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
       case head::tail => {
         routesTree.children.get(StringPathItem(head)) match {
           case Some(foundRoute) => traverseMe(tail, foundRoute)
-          case None => routesTree.children.get(TypedPathItem[AnyRef]()) match {
+          case None => routesTree.children.get(APathItem[AnyRef]()) match {
             case Some(foundRoute) => traverseMe(tail, foundRoute)
             case None => None
           }
