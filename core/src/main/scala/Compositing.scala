@@ -235,6 +235,7 @@ trait Compositing extends TiramisuTags
     data match {
       case seq:Seq[AnyRef] => seq:java.util.List[AnyRef]
       case map:Map[AnyRef,AnyRef] => map:java.util.Map[AnyRef,AnyRef]
+      case opt:Option[AnyRef] => opt.toList:java.util.List[AnyRef]
       case other => other
     }
   }

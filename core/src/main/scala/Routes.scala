@@ -19,6 +19,11 @@ case class APathItem[T:ClassTag]() extends TypedPathItem[T]{
 case class MAPathItem[T,M[_]](implicit t: ClassTag[T], m: ClassTag[M[_]]) extends TypedPathItem[M[T]]{
   def enclosedType = implicitly[ClassTag[T]].runtimeClass
   def optionedType = implicitly[ClassTag[M[_]]].runtimeClass
+
+  override def hashCode() = classOf[MAPathItem[_,Option]].hashCode()
+
+  override def equals(obj: Any) = obj != null && obj.isInstanceOf[MAPathItem[_,Option]]
+
   override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType)
 }
 
@@ -54,9 +59,12 @@ trait Route {
   }
 
   object SimpleOptionedObject{
-    def unapply(input:(String,_)):Option[Option[Any]]= input match {
-      case (str,item@APathItem()) => Some(Option(item.provider.provide(str)))
-      case _ => None
+    def unapply(input:(String,_)):Option[Option[Any]]= {
+      println(input)
+      input match {
+        case (str,item@MAPathItem()) => Some(Option(item.provider.provide(str)))
+        case _ => None
+      }
     }
   }
 
@@ -72,7 +80,7 @@ trait Route {
       }else{
         val item = (stringPath.head, path.head) match {
           case SimpleProvidedObject(item) => item.toRight(ErrorPage(404))
-          case SimpleOptionedObject(item) => item
+          case SimpleOptionedObject(item) => Right(item)
           case (stringItem,StringPathItem(item)) if (stringItem==item) => Left(Skip)
           case _ => Left(ErrorPage(404))
         }
@@ -126,8 +134,8 @@ class Route0 extends Route {
   def /[T](v: APathItem[T])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
     setup(new Route1[T], this, v, ep)
 
-/*  def /[T](v: MAPathItem[T,Option[T]])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
-    setup(new Route1[T], this, v, ep)*/
+  def /[T](v: MAPathItem[T,Option])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
+    setup(new Route1[Option[T]], this, v, ep)
 
   def ->(f: => Unit) {
     def handler(h: HttpServletRequest) {

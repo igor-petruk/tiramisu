@@ -23,6 +23,7 @@ class Tree[K, V] {
     }
   }
 
+  override def toString = "Tree[children=%s]".format(children)
 }
 
 class RoutesTree extends Tree[PathItem, RouteHandler]{
@@ -38,13 +39,15 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
   private def traverseMeDyn(path:List[PathItem], traversedPath:List[Tree[PathItem, RouteHandler]],
                             routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
     // TODO: bad bug may be hidden here, also no support for ..
+    println("dyn "+routesTree)
     path match{
       case Nil=>Option(routesTree.value).orElse(routesTree.children.get(StringPathItem.trailingSlash).map(_.value))
       case StringPathItem("..")::tail => traverseMeDyn(tail, traversedPath.tail, traversedPath.head)
       case head::tail => {
         routesTree.children.get(head) match {
           case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath, foundRoute)
-          case None => routesTree.children.get(APathItem[AnyRef]()) match {
+          case None => routesTree.children.get(APathItem[AnyRef]()).orElse(
+            routesTree.children.get(MAPathItem[AnyRef,Option]())) match {
             case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath,foundRoute)
             case None => None
           }
@@ -55,14 +58,22 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
 
   @tailrec
   private def traverseMe(path:List[String], routesTree:Tree[PathItem, RouteHandler]):Option[RouteHandler]={
+    println("nodyn "+path+"/"+routesTree)
     path match{
       case Nil=>Option(routesTree.value)
       case head::tail => {
         routesTree.children.get(StringPathItem(head)) match {
           case Some(foundRoute) => traverseMe(tail, foundRoute)
-          case None => routesTree.children.get(APathItem[AnyRef]()) match {
-            case Some(foundRoute) => traverseMe(tail, foundRoute)
+          case None => {
+            println(routesTree.children.get(APathItem[AnyRef]())+" "+routesTree.children.get(MAPathItem[AnyRef,Option]()))
+            routesTree.children.get(APathItem[AnyRef]()).orElse(
+            routesTree.children.get(MAPathItem[AnyRef,Option]())) match {
+            case Some(foundRoute) => {
+              println("Found route "+foundRoute)
+              traverseMe(tail, foundRoute)
+            }
             case None => None
+          }
           }
         }
       }
