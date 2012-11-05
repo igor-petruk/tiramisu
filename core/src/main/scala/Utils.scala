@@ -46,8 +46,8 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
       case head::tail => {
         routesTree.children.get(head) match {
           case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath, foundRoute)
-          case None => routesTree.children.get(APathItem[AnyRef]()).orElse(
-            routesTree.children.get(MAPathItem[AnyRef,Option]())) match {
+          case None => routesTree.children.get(APathSpec[AnyRef]()).orElse(
+            routesTree.children.get(MAPathSpec[AnyRef,Option]())) match {
             case Some(foundRoute) => traverseMeDyn(tail, routesTree::traversedPath,foundRoute)
             case None => None
           }
@@ -65,9 +65,8 @@ class RoutesTree extends Tree[PathItem, RouteHandler]{
         routesTree.children.get(StringPathItem(head)) match {
           case Some(foundRoute) => traverseMe(tail, foundRoute)
           case None => {
-            println(routesTree.children.get(APathItem[AnyRef]())+" "+routesTree.children.get(MAPathItem[AnyRef,Option]()))
-            routesTree.children.get(APathItem[AnyRef]()).orElse(
-            routesTree.children.get(MAPathItem[AnyRef,Option]())) match {
+            routesTree.children.get(APathSpec[AnyRef]()).orElse(
+            routesTree.children.get(MAPathSpec[AnyRef,Option]())) match {
             case Some(foundRoute) => {
               println("Found route "+foundRoute)
               traverseMe(tail, foundRoute)

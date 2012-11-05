@@ -138,7 +138,7 @@ trait Compositing extends TiramisuTags
         logger.debug("GROUP {}/{}",Array(g,g.scope):_*)
         for (c <- g.nodes) processTags(c,context, pscope)
       }
-      case _ => throw new IllegalArgumentException("Don't know how to serialize a " + node.getClass.getName)
+      case _ => throw new IllegalArgumentException("Don't know how to serialize aType " + node.getClass.getName)
     }
   }
 

@@ -8,23 +8,24 @@ import annotation.tailrec
 
 sealed class PathItem
 case class StringPathItem(string:String) extends PathItem
-abstract class TypedPathItem[T] extends PathItem{
-  def enclosedType
+case class TypedPathItem[T](types:List[Class[_]]) extends PathItem{
   var provider:EntityProvider[T] = null
 }
-case class APathItem[T:ClassTag]() extends TypedPathItem[T]{
-  def enclosedType = implicitly[ClassTag[T]].runtimeClass
-  override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType)
+
+sealed class PathSpec
+case class StringPathSpec(string:String) extends PathSpec
+abstract class TypedPathSpec[T] extends PathSpec{
+  var provider:EntityProvider[T] = null
 }
-case class MAPathItem[T,M[_]](implicit t: ClassTag[T], m: ClassTag[M[_]]) extends TypedPathItem[M[T]]{
-  def enclosedType = implicitly[ClassTag[T]].runtimeClass
-  def optionedType = implicitly[ClassTag[M[_]]].runtimeClass
+case class APathSpec[T](implicit t: ClassTag[T]) extends TypedPathSpec[T]{
+  def aType = implicitly[ClassTag[T]].runtimeClass
+  override def toString = "%s(%s)".format(this.getClass.getSimpleName,aType)
+}
+case class MAPathSpec[T,M[_]](implicit t: ClassTag[T], m: ClassTag[M[_]]) extends TypedPathSpec[M[T]]{
+  def aType = implicitly[ClassTag[T]].runtimeClass
+  def mType = implicitly[ClassTag[M[_]]].runtimeClass
 
-  override def hashCode() = classOf[MAPathItem[_,Option]].hashCode()
-
-  override def equals(obj: Any) = obj != null && obj.isInstanceOf[MAPathItem[_,Option]]
-
-  override def toString = "%s(%s)".format(this.getClass.getSimpleName,enclosedType)
+  override def toString = "%s(%s)".format(this.getClass.getSimpleName,aType)
 }
 
 object StringPathItem{
@@ -40,20 +41,24 @@ trait Route {
   var item: PathItem = _
   var servlet: Tiramisu = _
 
-  def setup[Q <: Route, T](q: Q, other: Route, item: PathItem, provider: EntityProvider[T]): Q = {
+  def setup[Q <: Route, T](q: Q, other: Route, item: PathSpec, provider: EntityProvider[T]): Q = {
     q.previous = other
     item match {
-      case t: TypedPathItem[T] => t.provider = provider
+      case t: TypedPathSpec[T] => t.provider = provider
       case _ =>
     }
-    q.item = item
+    q.item = item match {
+      case StringPathSpec(str) => StringPathItem(str)
+      case i@APathSpec() => TypedPathItem[T](List(i.aType))
+      case i@MAPathSpec() => TypedPathItem[T](List(i.mType, i.aType))
+    }
     q.servlet = other.servlet
     q
   }
 
   object SimpleProvidedObject{
     def unapply(input:(String,_)):Option[Option[Any]]= input match {
-      case (str,item@APathItem()) => Some(Option(item.provider.provide(str)))
+      case (str,item@TypedPathItem(List(_))) => Some(Option(item.provider.provide(str)))
       case _ => None
     }
   }
@@ -61,8 +66,9 @@ trait Route {
   object SimpleOptionedObject{
     def unapply(input:(String,_)):Option[Option[Any]]= {
       println(input)
+      val optClass = classOf[Option[_]]
       input match {
-        case (str,item@MAPathItem()) => Some(Option(item.provider.provide(str)))
+        case (str,item@TypedPathItem(List(`optClass`,_))) => Some(Option(item.provider.provide(str)))
         case _ => None
       }
     }
@@ -129,12 +135,12 @@ abstract class RestResource[T](implicit provider:EntityProvider[T]) extends Rout
 }
 
 class Route0 extends Route {
-  def /(v: String) = setup(new Route0, this, StringPathItem(v), StringDummyProvider)
+  def /(v: String) = setup(new Route0, this, StringPathSpec(v), StringDummyProvider)
 
-  def /[T](v: APathItem[T])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
+  def /[T](v: APathSpec[T])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
     setup(new Route1[T], this, v, ep)
 
-  def /[T](v: MAPathItem[T,Option])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
+  def /[T](v: MAPathSpec[T,Option])(implicit runtimeClass: ClassTag[T], ep: EntityProvider[T]) =
     setup(new Route1[Option[T]], this, v, ep)
 
   def ->(f: => Unit) {
@@ -150,9 +156,9 @@ class Route0 extends Route {
 }
 
 class Route1[T1: ClassTag] extends Route {
-  def /(v: String) = setup(new Route1[T1], this, StringPathItem(v), StringDummyProvider)
+  def /(v: String) = setup(new Route1[T1], this, StringPathSpec(v), StringDummyProvider)
 
-  def /[T2](v: TypedPathItem[T2])(implicit runtimeClass: ClassTag[T2], ep: EntityProvider[T2]) =
+  def /[T2](v: TypedPathSpec[T2])(implicit runtimeClass: ClassTag[T2], ep: EntityProvider[T2]) =
     setup(new Route2[T1, T2], this, v, ep)
 
   def ->(f: T1 => Unit) {
@@ -166,9 +172,9 @@ class Route1[T1: ClassTag] extends Route {
 }
 
 class Route2[T1: ClassTag, T2: ClassTag] extends Route {
-  def /(v: String) = setup(new Route2[T1, T2], this, StringPathItem(v), StringDummyProvider)
+  def /(v: String) = setup(new Route2[T1, T2], this, StringPathSpec(v), StringDummyProvider)
 
-  def /[T3](v: TypedPathItem[T3])(implicit runtimeClass: ClassTag[T3], ep: EntityProvider[T3]) =
+  def /[T3](v: TypedPathSpec[T3])(implicit runtimeClass: ClassTag[T3], ep: EntityProvider[T3]) =
     setup(new Route3[T1, T2, T3], this, v, ep)
 
   def ->(f: (T1, T2) => Unit) {
@@ -185,9 +191,9 @@ class Route2[T1: ClassTag, T2: ClassTag] extends Route {
 }
 
 class Route3[T1: ClassTag, T2: ClassTag, T3: ClassTag] extends Route {
-  def /(v: String) = setup(new Route3[T1, T2, T3], this, StringPathItem(v), StringDummyProvider)
+  def /(v: String) = setup(new Route3[T1, T2, T3], this, StringPathSpec(v), StringDummyProvider)
 
-  def /[T4](v: TypedPathItem[T4])(implicit runtimeClass: ClassTag[T4], ep: EntityProvider[T4]) =
+  def /[T4](v: TypedPathSpec[T4])(implicit runtimeClass: ClassTag[T4], ep: EntityProvider[T4]) =
     setup(new Route4[T1, T2, T3, T4], this, v, ep)
 
   def ->(f: (T1, T2, T3) => Unit) {
@@ -205,7 +211,7 @@ class Route3[T1: ClassTag, T2: ClassTag, T3: ClassTag] extends Route {
 }
 
 class Route4[T1, T2, T3, T4] extends Route {
-  def /(v: String) = setup(new Route4[T1, T2, T3, T4], this, StringPathItem(v), StringDummyProvider)
+  def /(v: String) = setup(new Route4[T1, T2, T3, T4], this, StringPathSpec(v), StringDummyProvider)
 
   def ->(f: (T1, T2, T3, T4) => Unit) {
     def handler(h: HttpServletRequest) {

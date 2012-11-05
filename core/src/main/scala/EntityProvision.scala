@@ -9,10 +9,10 @@ trait EntityProvider[T]{
 }
 
 trait EntityProvision{
-  val int = APathItem[Int]()
-  val string = APathItem[String]()
-  implicit def c2t[T](v:Class[T])(implicit t:ClassTag[T],p:EntityProvider[T]) = APathItem[T]()
-  def opt[T:ClassTag](v:Class[T])  = MAPathItem[T,Option]()
+  val int = APathSpec[Int]()
+  val string = APathSpec[String]()
+  implicit def c2t[T](v:Class[T])(implicit t:ClassTag[T],p:EntityProvider[T]) = APathSpec[T]()
+  def opt[T:ClassTag](v:Class[T])  = MAPathSpec[T,Option]()
 }
 
 object providers{
