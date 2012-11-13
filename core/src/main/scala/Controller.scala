@@ -20,7 +20,7 @@ trait JSP{ self:Controller =>
   }
 }
 
-trait Controller extends Compositing with EntityProvision{
+trait Controller extends Compositing with EntityProvision with SessionBeans with RequestBeans{
   self:Tiramisu =>
 
   val requestObject = new ThreadLocal[HttpServletRequest]
@@ -35,8 +35,19 @@ trait Controller extends Compositing with EntityProvision{
     routes.add(newRoute, handler)
   }
 
+  def postprocessBeans{
+     for (field<-self.getClass.getDeclaredFields){
+       if (field.getType==classOf[Bean[Any]]){
+         field.setAccessible(true)
+         val bean = field.get(self).asInstanceOf[Bean[Any]]
+         bean.beanId = field.getName
+       }
+     }
+  }
+
   def init(filterConfig: FilterConfig) {
   	this.filterConfig = filterConfig
+    postprocessBeans
   }
 
   def doFilter(request: ServletRequest, response: ServletResponse, chain: FilterChain) {

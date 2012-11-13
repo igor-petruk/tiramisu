@@ -231,11 +231,12 @@ trait Compositing extends TiramisuTags
     page
   })
 
-  def convertInput(data:AnyRef)={
+  def convertInput(data:AnyRef):AnyRef={
     data match {
       case seq:Seq[AnyRef] => seq:java.util.List[AnyRef]
       case map:Map[AnyRef,AnyRef] => map:java.util.Map[AnyRef,AnyRef]
       case opt:Option[AnyRef] => opt.toList:java.util.List[AnyRef]
+      case bean:Bean[AnyRef] => convertInput(bean.value)
       case other => other
     }
   }
