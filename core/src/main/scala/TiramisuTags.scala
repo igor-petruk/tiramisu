@@ -10,19 +10,19 @@ import scala.Some
 
 case class ForChunk(es:ExpressionService, variable:String, expression:String, body:Iterable[PageChunk]) extends PageChunk{
   def write(context: PageContext, writer:PrintWriter){
-    val oldValue = context.attributes.get(variable)
+    val oldMap = context.attributes
     val list = es.loadExpression(expression).evaluate(
       new PageJexlContext(context)).asInstanceOf[Wrappers.SeqWrapper[AnyRef]]
+    var item: AnyRef = null
+    def getItemMap = Map(variable->{()=>item})
+    context.attributes = getItemMap.orElse(context.attributes)
     for (i<-list){
-      context.attributes.put(variable,i)
+      item = i
       for (bodyItem<-body){
         bodyItem.write(context, writer)
       }
     }
-    oldValue match {
-      case Some(old)=>context.attributes.put(variable,old)
-      case None => context.attributes.remove(variable)
-    }
+    context.attributes = oldMap
   }
 }
 

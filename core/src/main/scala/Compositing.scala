@@ -19,7 +19,7 @@ class CompilationContext(es:ExpressionService){
 }
 
 trait PageContext{
-  val attributes = mutable.Map[String,AnyRef]()
+  var attributes:PartialFunction[String,()=>Any] = Map()
   val route: List[PathItem]
 }
 
@@ -248,13 +248,13 @@ trait Compositing extends TiramisuTags
         case (key:String, data:AnyRef)=> (key->convertInput(data))
         case other=> (value.getClass.getSimpleName->convertInput(value))
       }
-      ).toMap[String,AnyRef]
+      ).toMap[String,AnyRef].mapValues({x=>{()=>x}})
     response.setContentType("text/html")//; charset=utf-8")
     response.setCharacterEncoding("utf-8")
     val pageContext = new PageContext{
       val route = routeConfiguration.get().route
     }
-    pageContext.attributes ++= map
+    pageContext.attributes = map.orElse(exposureMap)
     val page = loadPage(effectiveKey)
     page.write(pageContext)
   }

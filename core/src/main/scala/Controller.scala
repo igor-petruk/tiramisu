@@ -1,9 +1,10 @@
 package org.tiramisu
 
-import reflect.ClassTag
 import javax.servlet.http.{HttpServletResponse, HttpServletRequest}
 import org.tiramisu.util.RoutesTree
 import javax.servlet.{FilterChain, ServletResponse, ServletRequest, FilterConfig}
+import collection.mutable
+import collection.mutable.{ArrayBuffer, ListBuffer}
 
 trait JSP{ self:Controller =>
   def jspPrefix = "/WEB-INF/jsp/"
@@ -31,8 +32,14 @@ trait Controller extends Compositing with EntityProvision with SessionBeans with
 
   var filterConfig:FilterConfig = _
 
+  var postLoadListeners = new ArrayBuffer[()=>Unit] with mutable.SynchronizedBuffer[()=>Unit]
+
   def addRoute(newRoute:List[PathItem], handler:RouteHandler){
     routes.add(newRoute, handler)
+  }
+
+  def postLoad(f: =>Unit){
+    postLoadListeners+=(()=>f)
   }
 
   def postprocessBeans{
@@ -43,6 +50,8 @@ trait Controller extends Compositing with EntityProvision with SessionBeans with
          bean.beanId = field.getName
        }
      }
+    postLoadListeners.foreach(_())
+    postLoadListeners.clear
   }
 
   def init(filterConfig: FilterConfig) {

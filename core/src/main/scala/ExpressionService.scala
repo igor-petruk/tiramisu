@@ -3,11 +3,14 @@ package org.tiramisu
 import org.apache.commons.jexl2.{Expression, JexlEngine, JexlContext}
 
 class PageJexlContext(context: PageContext) extends JexlContext {
-  def get(name: String): AnyRef = context.attributes(name)
+  def get(name: String): AnyRef = {
+    val f = context.attributes(name)
+    f().asInstanceOf[AnyRef]
+  }
 
   def set(name: String, value: AnyRef) {}
 
-  def has(name: String): Boolean = context.attributes.contains(name)
+  def has(name: String): Boolean = context.attributes.isDefinedAt(name)
 }
 
 trait ExpressionService {
