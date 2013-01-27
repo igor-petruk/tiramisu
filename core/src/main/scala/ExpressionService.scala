@@ -5,7 +5,7 @@ import org.apache.commons.jexl2.{Expression, JexlEngine, JexlContext}
 class PageJexlContext(context: PageContext) extends JexlContext {
   def get(name: String): AnyRef = {
     val f = context.attributes(name)
-    f().asInstanceOf[AnyRef]
+    f()
   }
 
   def set(name: String, value: AnyRef) {}

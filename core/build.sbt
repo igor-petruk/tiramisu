@@ -4,13 +4,13 @@ version := "0.1-SNAPSHOT"
 
 organization := "com.github.igor-petruk.tiramisu"
 
-scalaVersion := "2.10.0-RC1"
+scalaVersion := "2.10.0"
 
 autoScalaLibrary := true
 
 net.virtualvoid.sbt.graph.Plugin.graphSettings
 
-crossScalaVersions := Seq("2.10.0-RC1")
+crossScalaVersions := Seq("2.10.0")
 
 /** Dependencies */
 resolvers ++= Seq(
@@ -19,7 +19,7 @@ resolvers ++= Seq(
 )
 
 libraryDependencies <<= scalaVersion { scala_version => Seq(
-	"org.scala-lang" % "scala-library" % "2.10.0-RC1",
+	"org.scala-lang" % "scala-library" % "2.10.0",
   "javax.servlet" % "servlet-api" % "3.0-alpha-1", 
   "org.slf4j" % "slf4j-api" % "1.7.2",
   "org.codehaus.jackson" % "jackson-mapper-lgpl" % "1.9.7",

@@ -3,12 +3,12 @@ package org.tiramisu
 import collection.mutable.{ArrayBuffer, ListBuffer, SynchronizedBuffer}
 
 trait Exposure{self:Controller=>
-  var exposureList = new ArrayBuffer[Bean[Any]] with SynchronizedBuffer[Bean[Any]]
-  var exposureMap:Map[String, ()=>Any] = Map()
+  var exposureList = new ArrayBuffer[Bean[AnyRef]] with SynchronizedBuffer[Bean[AnyRef]]
+  var exposureMap:Map[String, ()=>AnyRef] = Map()
 
-  implicit def exposurePimp[T](bean:Bean[T]) = new {
+  implicit def exposurePimp[T<:AnyRef](bean:Bean[T]) = new {
     def expose={
-      exposureList+=(bean.asInstanceOf[Bean[Any]])
+      exposureList+=(bean.asInstanceOf[Bean[AnyRef]])
       bean
     }
   }

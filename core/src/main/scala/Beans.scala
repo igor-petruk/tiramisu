@@ -6,7 +6,7 @@ trait BeanProvider{
   def store(id:String, item:Option[AnyRef])
 }
 
-class Bean[T](provider:BeanProvider, factory: Option[()=>T]){
+class Bean[T<:AnyRef](provider:BeanProvider, factory: Option[()=>T]){
   var beanId:String = _
 
   def value:T = {
@@ -33,7 +33,6 @@ class Bean[T](provider:BeanProvider, factory: Option[()=>T]){
   }
 
   def value_=(that:T){
-     println("Storing "+beanId+" "+that)
      provider.store(beanId, Option(that.asInstanceOf[AnyRef]))
   }
 
@@ -45,8 +44,7 @@ class Bean[T](provider:BeanProvider, factory: Option[()=>T]){
 }
 
 class ScopedBeanShortcut(provider:BeanProvider){
-  def apply[T<:Any](factory: =>T) = new Bean[T](provider, Some(()=>factory))
-  def apply[T<:AnyRef]() = new Bean[T](provider, None)
+  def apply[T<:AnyRef](factory: =>T = null) = new Bean[T](provider, if (factory==null) None else Some(()=>factory))
 }
 
 trait SessionBeans {self:Controller=>

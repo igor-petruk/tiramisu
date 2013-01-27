@@ -4,12 +4,12 @@ import xml._
 import dtd.{DTD}
 import org.apache.commons.jexl2.{JexlContext, JexlEngine, Expression}
 import java.io.{PrintWriter}
-import collection.{immutable, Iterable, mutable}
+import collection.{mutable, immutable, Iterable}
 import collection.JavaConversions._
-import collection.convert.Wrappers
-import javax.servlet.Servlet
+import scala.concurrent._
 import annotation.tailrec
 import org.slf4j.LoggerFactory
+import scala.concurrent.duration._
 
 class CompilationContext(es:ExpressionService){
   val attributes = mutable.Map[String,AnyRef]()
@@ -19,7 +19,7 @@ class CompilationContext(es:ExpressionService){
 }
 
 trait PageContext{
-  var attributes:PartialFunction[String,()=>Any] = Map()
+  var attributes:PartialFunction[String,()=>AnyRef] = Map()
   val route: List[PathItem]
 }
 
@@ -75,8 +75,12 @@ class PageCode(es:ExpressionService){
 
 trait Compositing extends TiramisuTags
 				          with GeneralTags
-                  with ExpressionService { self:Tiramisu=>
+                  with ExpressionService
+                  with Concurrency
+                  { self:Tiramisu=>
   private[Compositing] val logger = LoggerFactory.getLogger(classOf[Compositing])
+
+  private implicit val ec = executionContext
 
   def tiraviewPrefix = "/WEB-INF/tiraview/"
   def tiraviewSuffix = ".xhtml"
@@ -213,9 +217,9 @@ trait Compositing extends TiramisuTags
     }
   }
 
-  val loadedPages = scala.collection.concurrent.TrieMap[PageCacheKey,Page]()
+  val loadedPages =  new mutable.HashMap[PageCacheKey,Future[Page]] with mutable.SynchronizedMap[PageCacheKey,Future[Page]]
 
-  def loadPage(key:PageCacheKey):Page=loadedPages.getOrElseUpdate(key,{
+  def loadPage(key:PageCacheKey):Page=Await.result(loadedPages.getOrElseUpdate(key,future({
     val pageXml = loadXml(key.pageName)
     val compilationContext = new CompilationContext(this)
     processTags(pageXml.docElem, compilationContext)
@@ -229,7 +233,7 @@ trait Compositing extends TiramisuTags
       logger.debug("Found DTD {}",dtd)
     }
     page
-  })
+  })),Duration.Inf)
 
   def convertInput(data:AnyRef):AnyRef={
     data match {
@@ -237,29 +241,27 @@ trait Compositing extends TiramisuTags
       case map:Map[AnyRef,AnyRef] => map:java.util.Map[AnyRef,AnyRef]
       case opt:Option[AnyRef] => opt.toList:java.util.List[AnyRef]
       case bean:Bean[AnyRef] => convertInput(bean.value)
-      case other => other
+      case other => {
+        other
+      }
     }
   }
 
-  def compose(key:PageCacheKey, params:AnyRef*){
+  def compose(key:PageCacheKey, params:(String,AnyRef)*){
     val effectiveKey = key
-    val map = (for (value<-params) yield
-      value match {
-        case (key:String, data:AnyRef)=> (key->convertInput(data))
-        case other=> (value.getClass.getSimpleName->convertInput(value))
-      }
-      ).toMap[String,AnyRef].mapValues({x=>{()=>x}})
+    val map = params.toMap[String,AnyRef].mapValues(x=>convertInput(x)).mapValues({x=>{()=>x}})
+
     response.setContentType("text/html")//; charset=utf-8")
     response.setCharacterEncoding("utf-8")
     val pageContext = new PageContext{
       val route = routeConfiguration.get().route
     }
-    pageContext.attributes = map.orElse(exposureMap)
+    pageContext.attributes = map.orElse(exposureMap.mapValues({f=>{()=>convertInput(f())}}))
     val page = loadPage(effectiveKey)
     page.write(pageContext)
   }
 
-  def compose(pageName:String, params:AnyRef*){
+  def compose(pageName:String, params:(String,AnyRef)*){
     compose(PageCacheKey(pageName), params:_*)
   }
 }

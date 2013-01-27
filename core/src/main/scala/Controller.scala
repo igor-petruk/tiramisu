@@ -44,9 +44,9 @@ trait Controller extends Compositing with EntityProvision with SessionBeans with
 
   def postprocessBeans{
      for (field<-self.getClass.getDeclaredFields){
-       if (field.getType==classOf[Bean[Any]]){
+       if (field.getType==classOf[Bean[AnyRef]]){
          field.setAccessible(true)
-         val bean = field.get(self).asInstanceOf[Bean[Any]]
+         val bean = field.get(self).asInstanceOf[Bean[AnyRef]]
          bean.beanId = field.getName
        }
      }
